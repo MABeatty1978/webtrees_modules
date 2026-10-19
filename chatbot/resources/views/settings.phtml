@@ -1,0 +1,164 @@
+<?php
+
+declare(strict_types=1);
+
+use Fisharebest\Webtrees\Http\RequestHandlers\ControlPanel;
+use Fisharebest\Webtrees\Http\RequestHandlers\ModulesAllPage;
+use Fisharebest\Webtrees\I18N;
+
+/**
+ * @var array<string,string> $access_options
+ * @var int                  $answered_today
+ * @var bool                 $has_api_key
+ * @var array<string,string> $settings
+ * @var string               $title
+ */
+
+?>
+
+<?= view('components/breadcrumbs', ['links' => [route(ControlPanel::class) => I18N::translate('Control panel'), route(ModulesAllPage::class) => I18N::translate('Modules'), $title]]) ?>
+
+<h1><?= e($title) ?></h1>
+
+<p>
+    Questions answered today: <strong><?= $answered_today ?></strong>
+    <?php if ((int) $settings['DAILY_LIMIT'] > 0) : ?>
+        of <?= (int) $settings['DAILY_LIMIT'] ?>
+    <?php endif ?>
+</p>
+
+<form method="post">
+    <h2 class="h4 mt-4">Access</h2>
+
+    <fieldset class="row mb-3">
+        <legend class="col-form-label col-sm-3 pt-0">Who can use the chatbot</legend>
+        <div class="col-sm-9">
+            <?php foreach ($access_options as $value => $label) : ?>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="ACCESS" id="ACCESS-<?= e($value) ?>" value="<?= e($value) ?>" <?= $settings['ACCESS'] === $value ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="ACCESS-<?= e($value) ?>"><?= e($label) ?></label>
+                </div>
+            <?php endforeach ?>
+            <div class="form-text">
+                The chatbot only ever sees what the person asking could see on the website, so signed-in
+                family members can ask about relatives that visitors cannot see. To turn it off completely,
+                disable this module.
+            </div>
+        </div>
+    </fieldset>
+
+    <h2 class="h4 mt-4">Google Gemini</h2>
+
+    <div class="row mb-3">
+        <label for="API_KEY" class="col-sm-3 col-form-label">API key</label>
+        <div class="col-sm-9">
+            <input type="password" class="form-control" id="API_KEY" name="API_KEY" value="" autocomplete="off" placeholder="<?= $has_api_key ? 'A key is saved. Leave this empty to keep it.' : 'AIza…' ?>">
+            <?php if ($has_api_key) : ?>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="REMOVE_API_KEY" id="REMOVE_API_KEY" value="1">
+                    <label class="form-check-label" for="REMOVE_API_KEY">Remove the saved key</label>
+                </div>
+            <?php endif ?>
+            <div class="form-text">
+                Create a key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com</a>.
+                Without a key, the chat panel is hidden. On Google's free tier, questions and family tree facts
+                may be used to improve Google's products; on the paid tier they are not.
+            </div>
+        </div>
+    </div>
+
+    <?php foreach (['ANSWER_MODEL' => ['Answer model', 'Writes the answers.'], 'PLANNER_MODEL' => ['Planner model', 'Works out what each question is asking for. A small, cheap model is enough.'], 'FALLBACK_MODEL' => ['Fallback model', 'Used instead of the answer model when the daily limit is nearly reached.']] as $name => [$label, $help]) : ?>
+        <div class="row mb-3">
+            <label for="<?= $name ?>" class="col-sm-3 col-form-label"><?= e($label) ?></label>
+            <div class="col-sm-9">
+                <input type="text" class="form-control" id="<?= $name ?>" name="<?= $name ?>" value="<?= e($settings[$name]) ?>" required pattern="[A-Za-z0-9._\-]{1,64}" maxlength="64">
+                <div class="form-text"><?= e($help) ?></div>
+            </div>
+        </div>
+    <?php endforeach ?>
+
+    <div class="row mb-3">
+        <div class="offset-sm-3 col-sm-9 form-text mt-0">
+            Model names change as Google releases new versions and retires old ones. See
+            <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener noreferrer">Gemini models</a>
+            and <a href="https://ai.google.dev/gemini-api/docs/deprecations" target="_blank" rel="noopener noreferrer">deprecations</a>.
+        </div>
+    </div>
+
+    <h2 class="h4 mt-4">Limits</h2>
+
+    <div class="row mb-3">
+        <label for="DAILY_LIMIT" class="col-sm-3 col-form-label">Questions per day</label>
+        <div class="col-sm-9">
+            <input type="number" class="form-control" id="DAILY_LIMIT" name="DAILY_LIMIT" value="<?= e($settings['DAILY_LIMIT']) ?>" min="0" max="100000" required>
+            <div class="form-text">
+                For the whole website. This caps your costs: when it is reached, the chatbot asks people to come back
+                tomorrow. Repeated questions answered from the cache are not counted. 0 means no limit.
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="DOWNGRADE_PERCENT" class="col-sm-3 col-form-label">Switch to the fallback model at</label>
+        <div class="col-sm-9">
+            <div class="input-group">
+                <input type="number" class="form-control" id="DOWNGRADE_PERCENT" name="DOWNGRADE_PERCENT" value="<?= e($settings['DOWNGRADE_PERCENT']) ?>" min="0" max="100" required>
+                <span class="input-group-text">% of the daily limit</span>
+            </div>
+            <div class="form-text">100 means never.</div>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="HOURLY_LIMIT" class="col-sm-3 col-form-label">Questions per person per hour</label>
+        <div class="col-sm-9">
+            <input type="number" class="form-control" id="HOURLY_LIMIT" name="HOURLY_LIMIT" value="<?= e($settings['HOURLY_LIMIT']) ?>" min="0" max="1000" required>
+            <div class="form-text">Stops one person, or a script, using up the daily limit. Administrators are not limited. 0 means no limit.</div>
+        </div>
+    </div>
+
+    <h2 class="h4 mt-4">Appearance</h2>
+
+    <div class="row mb-3">
+        <label for="ASSISTANT_NAME" class="col-sm-3 col-form-label">Name</label>
+        <div class="col-sm-9">
+            <input type="text" class="form-control" id="ASSISTANT_NAME" name="ASSISTANT_NAME" value="<?= e($settings['ASSISTANT_NAME']) ?>" maxlength="60" required>
+            <div class="form-text">Shown at the top of the chat panel.</div>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="GREETING" class="col-sm-3 col-form-label">Greeting</label>
+        <div class="col-sm-9">
+            <textarea class="form-control" id="GREETING" name="GREETING" rows="4" maxlength="1000" required><?= e($settings['GREETING']) ?></textarea>
+            <div class="form-text">The first message people see.</div>
+        </div>
+    </div>
+
+    <h2 class="h4 mt-4">Log</h2>
+
+    <div class="row mb-3">
+        <label for="LOG_DAYS" class="col-sm-3 col-form-label">Keep the chat log for</label>
+        <div class="col-sm-9">
+            <div class="input-group">
+                <input type="number" class="form-control" id="LOG_DAYS" name="LOG_DAYS" value="<?= e($settings['LOG_DAYS']) ?>" min="0" max="3650" required>
+                <span class="input-group-text">days</span>
+            </div>
+            <div class="form-text">
+                Questions, answers and errors are logged in <code>data/chatbot/logs/</code>, which cannot be read over the web. 0 turns the log off.
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">
+        <?= view('icons/save') ?>
+        <?= I18N::translate('save') ?>
+    </button>
+
+    <a href="<?= e(route(ModulesAllPage::class)) ?>" class="btn btn-secondary">
+        <?= view('icons/cancel') ?>
+        <?= I18N::translate('cancel') ?>
+    </a>
+
+    <?= csrf_field() ?>
+</form>

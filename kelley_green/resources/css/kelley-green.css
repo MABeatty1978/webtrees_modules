@@ -1,0 +1,837 @@
+/*
+ * Kelley Green: a modern webtrees theme, inspired by Kelleys Island, Ohio.
+ *
+ * Loaded after the core "minimal" theme, which is built on Bootstrap CSS
+ * variables.  Most of the work here is done by redefining those variables,
+ * so that core pages (including new ones added in future upgrades) pick up
+ * the palette automatically.  Hand-written rules only target the stable
+ * wt-* class names used by the page layout.
+ *
+ * Selectors are prefixed with [dir].  The core CSS is built with an RTL plugin
+ * that prefixes many Bootstrap/webtrees rules the same way, so this gives our
+ * rules equal specificity, and they win by being loaded later.
+ *
+ * Kelleys Island coastline: © OpenStreetMap contributors, ODbL.
+ * https://www.openstreetmap.org/relation/20058465
+ */
+
+/*
+ * Design tokens
+ */
+:root,
+[data-bs-theme=light] {
+    /* Kelley green scale.  #4cbb17 is true Kelley green - use it for accents,
+     * not text, as it does not have enough contrast against white. */
+    --kg-50: #f3faef;
+    --kg-100: #e4f4da;
+    --kg-200: #c8e9b4;
+    --kg-300: #9fd77f;
+    --kg-400: #6fcc3d;
+    --kg-500: #4cbb17;
+    --kg-600: #3a9a12;
+    --kg-700: #237a0f;
+    --kg-800: #1a5d0c;
+    --kg-900: #133f0a;
+    --kg-950: #0b2a07;
+
+    --kg-ink: #1d281a;
+    --kg-page-bg: #f4f7f2;
+    --kg-surface: #fff;
+    --kg-line: #dde6d8;
+    --kg-shadow-sm: 0 1px 2px rgb(19 63 10 / 6%);
+    --kg-shadow: 0 1px 2px rgb(19 63 10 / 5%), 0 6px 20px rgb(19 63 10 / 7%);
+    --kg-shadow-lg: 0 4px 12px rgb(19 63 10 / 10%), 0 18px 40px rgb(19 63 10 / 12%);
+    --kg-radius: 0.875rem;
+    --kg-font-display: "Fraunces", Georgia, "Times New Roman", serif;
+    --kg-font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    /* Shown under the site title.  Set to "" to hide it. */
+    --kg-tagline: "Kelleys Island \00B7  Lake Erie, Ohio";
+
+    /* Bootstrap */
+    --bs-primary: var(--kg-700);
+    --bs-primary-rgb: 35, 122, 15;
+    --bs-primary-text-emphasis: var(--kg-900);
+    --bs-primary-bg-subtle: var(--kg-100);
+    --bs-primary-border-subtle: var(--kg-200);
+    --bs-success: var(--kg-600);
+    --bs-success-rgb: 58, 154, 18;
+    --bs-success-text-emphasis: var(--kg-900);
+    --bs-success-bg-subtle: var(--kg-50);
+    --bs-success-border-subtle: var(--kg-200);
+    --bs-link-color: var(--kg-700);
+    --bs-link-color-rgb: 35, 122, 15;
+    --bs-link-hover-color: var(--kg-900);
+    --bs-link-hover-color-rgb: 19, 63, 10;
+    --bs-focus-ring-color: rgb(76 187 23 / 35%);
+    --bs-body-font-family: var(--kg-font-body);
+    --bs-body-color: var(--kg-ink);
+    --bs-body-color-rgb: 29, 40, 26;
+    --bs-emphasis-color: var(--kg-950);
+    --bs-secondary-color: rgb(29 40 26 / 68%);
+    --bs-tertiary-bg: #eff5ec;
+    --bs-secondary-bg: #e6eee2;
+    --bs-border-color: var(--kg-line);
+    --bs-border-radius: 0.5rem;
+    --bs-border-radius-lg: var(--kg-radius);
+    --bs-border-radius-xl: 1.25rem;
+
+    /* webtrees */
+    --chart-line: solid #a7c897 var(--bs-border-width);
+    --chart-line-radius: var(--bs-border-radius-xl);
+    --link-color: var(--bs-link-color);
+    --link-color-hover: var(--bs-link-hover-color);
+    --link-decoration: none;
+    --link-decoration-hover: underline;
+    --sex-f-bg: #fdf1f6;
+    --sex-f-fg: #d6336c;
+    --sex-m-bg: #edf4fc;
+    --sex-m-fg: #3d7fc4;
+    --sex-u-bg: #f0f5ee;
+    --sex-u-fg: #7b8c76;
+    --sex-x-bg: #fdf6e7;
+    --sex-x-fg: #dd9a2f;
+
+    /* The island, as a mask (logo, menu icon) and as a contour-line watermark (header) */
+    --kg-island: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 168'%3E%3Cpath d='M178.5 86.0L177.9 80.4L180.1 76.4L179.5 73.1L181.3 70.6L180.4 67.5L176.7 63.9L173.3 54.4L175.3 51.1L177.4 43.2L183.5 35.5L184.7 25.5L190.9 22.6L193.6 17.6L200.0 1.4L198.3 0.0L187.1 5.6L185.3 12.1L182.8 14.7L182.7 18.8L181.5 22.4L174.7 28.1L165.2 33.3L159.9 38.0L157.0 45.1L151.5 50.1L144.2 54.6L138.8 56.6L128.0 57.6L121.8 57.1L114.9 54.6L106.0 49.4L99.9 43.3L97.2 38.7L98.2 33.6L101.9 29.0L101.6 27.8L97.8 24.9L93.9 24.1L89.5 19.4L79.9 17.3L73.3 16.9L56.9 19.2L47.0 25.1L38.9 32.6L38.6 36.8L40.3 45.9L38.9 54.5L36.6 60.5L24.9 72.4L6.8 83.2L1.5 88.6L0.0 95.9L0.5 98.3L2.6 100.9L6.1 103.4L10.7 105.1L11.4 107.1L18.0 109.8L18.6 108.9L20.4 110.4L24.9 117.1L30.4 121.9L33.9 123.7L35.1 123.0L42.6 123.1L46.6 123.8L48.6 125.2L52.2 124.6L56.2 125.8L63.0 126.2L79.0 132.5L87.6 133.7L90.4 136.4L93.2 135.8L98.0 140.2L101.9 140.9L102.7 144.4L100.6 147.4L102.5 156.4L101.8 159.1L106.5 164.1L116.3 167.5L128.4 167.4L132.9 165.6L139.6 160.7L142.9 160.3L148.1 162.9L159.3 158.0L164.2 142.2L170.7 137.2L175.6 126.2L178.6 123.3L187.7 120.0L188.4 116.3L181.9 111.9L179.4 108.0L179.3 98.6L178.0 93.1Z'/%3E%3C/svg%3E");
+    --kg-island-contours: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-70 -70 340 308'%3E%3Cdefs%3E%3Cpath id='i' d='M178.5 86.0L177.9 80.4L180.1 76.4L179.5 73.1L181.3 70.6L180.4 67.5L176.7 63.9L173.3 54.4L175.3 51.1L177.4 43.2L183.5 35.5L184.7 25.5L190.9 22.6L193.6 17.6L200.0 1.4L198.3 0.0L187.1 5.6L185.3 12.1L182.8 14.7L182.7 18.8L181.5 22.4L174.7 28.1L165.2 33.3L159.9 38.0L157.0 45.1L151.5 50.1L144.2 54.6L138.8 56.6L128.0 57.6L121.8 57.1L114.9 54.6L106.0 49.4L99.9 43.3L97.2 38.7L98.2 33.6L101.9 29.0L101.6 27.8L97.8 24.9L93.9 24.1L89.5 19.4L79.9 17.3L73.3 16.9L56.9 19.2L47.0 25.1L38.9 32.6L38.6 36.8L40.3 45.9L38.9 54.5L36.6 60.5L24.9 72.4L6.8 83.2L1.5 88.6L0.0 95.9L0.5 98.3L2.6 100.9L6.1 103.4L10.7 105.1L11.4 107.1L18.0 109.8L18.6 108.9L20.4 110.4L24.9 117.1L30.4 121.9L33.9 123.7L35.1 123.0L42.6 123.1L46.6 123.8L48.6 125.2L52.2 124.6L56.2 125.8L63.0 126.2L79.0 132.5L87.6 133.7L90.4 136.4L93.2 135.8L98.0 140.2L101.9 140.9L102.7 144.4L100.6 147.4L102.5 156.4L101.8 159.1L106.5 164.1L116.3 167.5L128.4 167.4L132.9 165.6L139.6 160.7L142.9 160.3L148.1 162.9L159.3 158.0L164.2 142.2L170.7 137.2L175.6 126.2L178.6 123.3L187.7 120.0L188.4 116.3L181.9 111.9L179.4 108.0L179.3 98.6L178.0 93.1Z'/%3E%3C/defs%3E%3Cg fill='none' stroke='white' stroke-linejoin='round'%3E%3Cuse href='%23i' fill='white' fill-opacity='.07' stroke-opacity='.22' stroke-width='1.2'/%3E%3Cuse href='%23i' transform='translate(100 84) scale(1.16) translate(-100 -84)' stroke-opacity='.14'/%3E%3Cuse href='%23i' transform='translate(100 84) scale(1.34) translate(-100 -84)' stroke-opacity='.09'/%3E%3Cuse href='%23i' transform='translate(100 84) scale(1.54) translate(-100 -84)' stroke-opacity='.05'/%3E%3C/g%3E%3C/svg%3E");
+
+    /* Menu icons (24px line icons, used as masks so they take the text colour) */
+    --kg-icon-tree: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='2' width='6' height='5' rx='1'/%3E%3Crect x='2' y='17' width='6' height='5' rx='1'/%3E%3Crect x='16' y='17' width='6' height='5' rx='1'/%3E%3Cpath d='M12 7v5M5 17v-5h14v5'/%3E%3C/svg%3E");
+    --kg-icon-chart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12h5M7 6v12M7 6h5M7 18h5M12 3.5v5M12 15.5v5M12 3.5h9M12 8.5h9M12 15.5h9M12 20.5h9'/%3E%3C/svg%3E");
+    --kg-icon-list: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01'/%3E%3C/svg%3E");
+    --kg-icon-report: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 2v6h6M8 13h8M8 17h5'/%3E%3C/svg%3E");
+    --kg-icon-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+    --kg-icon-faq: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01'/%3E%3C/svg%3E");
+    --kg-icon-clippings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M8.1 8.1 20 20M14.5 9.5 20 4M8.1 15.9l3.4-3.4'/%3E%3C/svg%3E");
+    --kg-icon-story: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z'/%3E%3C/svg%3E");
+}
+
+/*
+ * Page
+ */
+[dir] body.wt-global {
+    background-color: var(--kg-page-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+[dir] h1, [dir] h2, [dir] h3,
+[dir] .h1, [dir] .h2, [dir] .h3,
+[dir] .wt-page-title {
+    font-family: var(--kg-font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--kg-900);
+}
+
+[dir] .wt-page-title {
+    font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.125rem);
+    margin-block: 0.75rem 0.25rem;
+}
+
+[dir] ::selection {
+    background: var(--kg-200);
+    color: var(--kg-950);
+}
+
+/*
+ * Header
+ *
+ * Desktop:  [ user menu ..................................... ]
+ *           [ (island) Site title / tagline ......... search ]
+ *           [ genealogy menu (full width, white bar)          ]
+ */
+[dir] .wt-header-wrapper {
+    position: relative;
+    color: #fff;
+    background-color: var(--kg-900);
+    background-image:
+        var(--kg-island-contours),
+        radial-gradient(ellipse at 85% 0%, rgb(111 204 61 / 35%), transparent 55%),
+        linear-gradient(135deg, var(--kg-950) 0%, var(--kg-900) 40%, var(--kg-700) 100%);
+    background-repeat: no-repeat;
+    background-position: right max(-6rem, calc(50% - 46rem)) center, 0 0, 0 0;
+    background-size: auto 210%, auto, auto;
+}
+
+[dir=rtl] .wt-header-wrapper {
+    background-position: left max(-6rem, calc(50% - 46rem)) center, 0 0, 0 0;
+}
+
+[dir] .wt-header-container {
+    margin-top: 0;
+    padding-top: 0.25rem;
+}
+
+[dir] .wt-header-content {
+    align-items: center;
+}
+
+/* Island badge: a glassy ring (::before) with the island drawn on top (::after) */
+[dir] .wt-site-logo {
+    display: block;
+    position: relative;
+    order: 2;
+    flex: 0 0 auto;
+    width: auto;
+    padding-block: 0.75rem 1.25rem;
+}
+
+[dir] .wt-site-logo::before {
+    content: "";
+    display: block;
+    width: 4.25rem;
+    height: 4.25rem;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 7%);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 20%);
+    backdrop-filter: blur(2px);
+}
+
+[dir] .wt-site-logo::after {
+    content: "";
+    position: absolute;
+    inset-block-start: 0.75rem;
+    inset-inline-start: calc(var(--bs-gutter-x) * 0.5);
+    width: 4.25rem;
+    height: 4.25rem;
+    background: linear-gradient(160deg, var(--kg-300), var(--kg-500));
+    -webkit-mask: var(--kg-island) center / 70% no-repeat;
+    mask: var(--kg-island) center / 70% no-repeat;
+    filter: drop-shadow(0 2px 6px rgb(0 0 0 / 30%));
+}
+
+[dir] .wt-site-title {
+    order: 3;
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+    padding-block: 0.75rem 1.25rem;
+    font-family: var(--kg-font-display);
+    font-size: clamp(1.4rem, 1rem + 1.6vw, 2.25rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    color: #fff;
+    text-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+}
+
+[dir] .wt-site-title::after {
+    content: var(--kg-tagline);
+    display: block;
+    margin-top: 0.35rem;
+    font-family: var(--kg-font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: none;
+    color: rgb(255 255 255 / 68%);
+}
+
+/* Search */
+[dir] .wt-header-search {
+    order: 4;
+    flex: 0 0 20rem;
+    max-width: 100%;
+    padding-block: 0.75rem 1.25rem;
+}
+
+[dir] .wt-header-search .input-group {
+    border-radius: 50rem;
+    background: rgb(255 255 255 / 96%);
+    box-shadow: 0 4px 14px rgb(0 0 0 / 18%);
+    padding: 0.25rem;
+    transition: box-shadow 0.15s ease;
+}
+
+[dir] .wt-header-search .input-group:focus-within {
+    box-shadow: 0 0 0 0.25rem rgb(111 204 61 / 45%), 0 4px 14px rgb(0 0 0 / 18%);
+}
+
+[dir] .wt-header-search-field.form-control {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    padding-inline: 1rem 0.5rem;
+    color: var(--kg-ink);
+}
+
+[dir] .wt-header-search-field.form-control:focus {
+    box-shadow: none;
+}
+
+[dir] .wt-header-search-button.btn {
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50% !important;
+    background: var(--kg-500);
+    color: var(--kg-950);
+}
+
+[dir] .wt-header-search-button.btn:hover,
+[dir] .wt-header-search-button.btn:focus-visible {
+    background: var(--kg-400);
+    color: var(--kg-950);
+}
+
+/* User menu: a slim utility bar along the top */
+[dir] .wt-secondary-navigation {
+    order: 1;
+    flex: 0 0 100%;
+    width: 100%;
+    white-space: nowrap;
+}
+
+[dir] .wt-user-menu {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.125rem;
+    font-size: 0.8125rem;
+}
+
+[dir] .wt-user-menu > .nav-item > .nav-link {
+    padding: 0.375rem 0.625rem;
+    border-radius: 50rem;
+    color: rgb(255 255 255 / 78%);
+    text-decoration: none;
+}
+
+[dir] .wt-user-menu > .nav-item > .nav-link:hover,
+[dir] .wt-user-menu > .nav-item > .nav-link:focus-visible,
+[dir] .wt-user-menu > .nav-item > .nav-link.show {
+    color: #fff;
+    background: rgb(255 255 255 / 12%);
+}
+
+[dir] .wt-user-menu .dropdown-toggle::after {
+    vertical-align: 0.15em;
+    border-top-width: 0.25em;
+    border-inline-width: 0.25em;
+}
+
+/* Genealogy menu: a white bar below the green band */
+[dir] .wt-primary-navigation {
+    order: 5;
+    background: var(--kg-surface);
+    border-bottom: 1px solid var(--kg-line);
+    box-shadow: var(--kg-shadow-sm);
+}
+
+[dir] .wt-genealogy-menu {
+    justify-content: center;
+    gap: 0.25rem;
+}
+
+[dir] .wt-genealogy-menu > .nav-item > .nav-link {
+    --kg-icon: var(--kg-island);
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    font-weight: 500;
+    color: var(--kg-ink);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+[dir] .wt-genealogy-menu > .nav-item > .nav-link::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 1.125rem;
+    height: 1.125rem;
+    background-color: var(--kg-600);
+    -webkit-mask: var(--kg-icon) center / contain no-repeat;
+    mask: var(--kg-icon) center / contain no-repeat;
+    transition: background-color 0.15s ease;
+}
+
+/* Active/hover indicator */
+[dir] .wt-genealogy-menu > .nav-item > .nav-link::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0.75rem;
+    bottom: -1px;
+    height: 3px;
+    border: 0;
+    margin: 0;
+    border-radius: 3px 3px 0 0;
+    background: var(--kg-500);
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+}
+
+[dir] .wt-genealogy-menu > .nav-item > .nav-link:hover,
+[dir] .wt-genealogy-menu > .nav-item > .nav-link:focus-visible,
+[dir] .wt-genealogy-menu > .nav-item > .nav-link.show {
+    color: var(--kg-800);
+}
+
+[dir] .wt-genealogy-menu > .nav-item > .nav-link:hover::before,
+[dir] .wt-genealogy-menu > .nav-item > .nav-link.show::before {
+    background-color: var(--kg-700);
+}
+
+[dir] .wt-genealogy-menu > .nav-item > .nav-link:hover::after,
+[dir] .wt-genealogy-menu > .nav-item > .nav-link:focus-visible::after,
+[dir] .wt-genealogy-menu > .nav-item > .nav-link.show::after {
+    transform: scaleX(1);
+}
+
+[dir] .wt-genealogy-menu .menu-tree > .nav-link { --kg-icon: var(--kg-icon-tree); }
+[dir] .wt-genealogy-menu .menu-chart > .nav-link { --kg-icon: var(--kg-icon-chart); }
+[dir] .wt-genealogy-menu .menu-list > .nav-link { --kg-icon: var(--kg-icon-list); }
+[dir] .wt-genealogy-menu .menu-report > .nav-link { --kg-icon: var(--kg-icon-report); }
+[dir] .wt-genealogy-menu .menu-search > .nav-link { --kg-icon: var(--kg-icon-search); }
+[dir] .wt-genealogy-menu .menu-faq > .nav-link { --kg-icon: var(--kg-icon-faq); }
+[dir] .wt-genealogy-menu .menu-clippings > .nav-link { --kg-icon: var(--kg-icon-clippings); }
+[dir] .wt-genealogy-menu .menu-story > .nav-link { --kg-icon: var(--kg-icon-story); }
+
+/*
+ * Dropdown menus
+ */
+[dir] .dropdown-menu {
+    --bs-dropdown-border-color: var(--kg-line);
+    --bs-dropdown-border-radius: 0.75rem;
+    --bs-dropdown-inner-border-radius: 0.5rem;
+    --bs-dropdown-padding-x: 0.375rem;
+    --bs-dropdown-padding-y: 0.375rem;
+    --bs-dropdown-box-shadow: var(--kg-shadow-lg);
+    --bs-dropdown-link-color: var(--kg-ink);
+    --bs-dropdown-link-hover-color: var(--kg-900);
+    --bs-dropdown-link-hover-bg: var(--kg-50);
+    --bs-dropdown-link-active-color: #fff;
+    --bs-dropdown-link-active-bg: var(--kg-700);
+    --bs-dropdown-item-padding-x: 0.75rem;
+    --bs-dropdown-item-padding-y: 0.45rem;
+    box-shadow: var(--bs-dropdown-box-shadow);
+    font-size: 0.9375rem;
+}
+
+[dir] .dropdown-item {
+    border-radius: var(--bs-dropdown-inner-border-radius);
+}
+
+[dir] .dropdown-item.active,
+[dir] .dropdown-item:active {
+    color: var(--bs-dropdown-link-active-color);
+}
+
+/*
+ * Main content
+ */
+[dir] .wt-main-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2.5rem;
+}
+
+[dir] .flash-messages .alert {
+    border-radius: var(--kg-radius);
+    box-shadow: var(--kg-shadow-sm);
+}
+
+/* Cards, including home-page blocks */
+[dir] .card {
+    --bs-card-border-color: var(--kg-line);
+    --bs-card-border-radius: var(--kg-radius);
+    --bs-card-inner-border-radius: calc(var(--kg-radius) - 1px);
+    --bs-card-cap-bg: var(--kg-surface);
+    --bs-card-cap-padding-y: 0.875rem;
+    --bs-card-cap-padding-x: 1.25rem;
+    --bs-card-spacer-x: 1.25rem;
+    box-shadow: var(--kg-shadow);
+}
+
+[dir] .card-header {
+    font-weight: 600;
+    color: var(--kg-900);
+    border-bottom-color: var(--kg-line);
+}
+
+[dir] .wt-block-header {
+    position: relative;
+    padding-inline-start: calc(var(--bs-card-cap-padding-x) + 0.5rem);
+}
+
+[dir] .wt-block-header::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: var(--bs-card-cap-padding-x);
+    inset-block: 0.95rem;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--kg-500);
+}
+
+[dir] .wt-block-header :is(h1, h2, h3, h4, h5) {
+    font-size: 1.0625rem;
+    margin: 0;
+}
+
+/* Tabs (individual page, etc.) */
+[dir] .nav-tabs {
+    --bs-nav-tabs-border-color: var(--kg-line);
+    --bs-nav-tabs-link-hover-border-color: transparent;
+    --bs-nav-tabs-link-active-color: var(--kg-800);
+    --bs-nav-tabs-link-active-bg: transparent;
+    --bs-nav-tabs-link-active-border-color: transparent;
+    gap: 0.25rem;
+}
+
+[dir] .nav-tabs .nav-link {
+    border: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    font-weight: 500;
+    color: var(--bs-secondary-color);
+}
+
+[dir] .nav-tabs .nav-link:hover {
+    color: var(--kg-800);
+    border-bottom-color: var(--kg-200);
+    text-decoration: none;
+}
+
+[dir] .nav-tabs .nav-link.active,
+[dir] .nav-tabs .nav-item.show .nav-link {
+    border-bottom-color: var(--kg-500);
+}
+
+[dir] .nav-pills {
+    --bs-nav-pills-border-radius: 50rem;
+    --bs-nav-pills-link-active-bg: var(--kg-700);
+}
+
+/* Tables */
+[dir] .table {
+    --bs-table-striped-bg: rgb(35 122 15 / 3.5%);
+    --bs-table-hover-bg: rgb(76 187 23 / 8%);
+    --bs-table-border-color: var(--kg-line);
+}
+
+[dir] .table > thead > tr > th {
+    font-weight: 600;
+    color: var(--kg-900);
+    background-color: var(--kg-50);
+}
+
+[dir] .wt-facts-table > tbody > tr > th {
+    color: var(--kg-900);
+    font-weight: 600;
+}
+
+[dir] .wt-page-options-label {
+    font-weight: 600;
+    color: var(--kg-900);
+}
+
+/* Buttons */
+[dir] .btn {
+    --bs-btn-border-radius: 0.5rem;
+    --bs-btn-font-weight: 500;
+}
+
+[dir] .btn-primary {
+    --bs-btn-bg: var(--kg-700);
+    --bs-btn-border-color: var(--kg-700);
+    --bs-btn-hover-bg: var(--kg-800);
+    --bs-btn-hover-border-color: var(--kg-800);
+    --bs-btn-active-bg: var(--kg-900);
+    --bs-btn-active-border-color: var(--kg-900);
+    --bs-btn-disabled-bg: var(--kg-700);
+    --bs-btn-disabled-border-color: var(--kg-700);
+    --bs-btn-focus-shadow-rgb: 76, 187, 23;
+    box-shadow: 0 1px 2px rgb(19 63 10 / 20%);
+}
+
+[dir] .btn-outline-primary {
+    --bs-btn-color: var(--kg-700);
+    --bs-btn-border-color: var(--kg-300);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: var(--kg-700);
+    --bs-btn-hover-border-color: var(--kg-700);
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: var(--kg-800);
+    --bs-btn-active-border-color: var(--kg-800);
+    --bs-btn-disabled-color: var(--kg-700);
+    --bs-btn-disabled-border-color: var(--kg-300);
+    --bs-btn-focus-shadow-rgb: 76, 187, 23;
+}
+
+[dir] .btn-secondary {
+    --bs-btn-color: var(--kg-900);
+    --bs-btn-bg: var(--kg-100);
+    --bs-btn-border-color: var(--kg-200);
+    --bs-btn-hover-color: var(--kg-950);
+    --bs-btn-hover-bg: var(--kg-200);
+    --bs-btn-hover-border-color: var(--kg-300);
+    --bs-btn-active-color: var(--kg-950);
+    --bs-btn-active-bg: var(--kg-300);
+    --bs-btn-active-border-color: var(--kg-300);
+}
+
+[dir] .btn-link {
+    --bs-btn-color: var(--kg-700);
+    --bs-btn-hover-color: var(--kg-900);
+}
+
+/* Forms */
+[dir] .form-control,
+[dir] .form-select {
+    border-color: #cfdac9;
+}
+
+[dir] .form-control:focus,
+[dir] .form-select:focus,
+[dir] .form-check-input:focus,
+[dir] .ts-wrapper.focus .ts-control {
+    border-color: var(--kg-400);
+    box-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color);
+}
+
+[dir] .form-check-input:checked {
+    background-color: var(--kg-700);
+    border-color: var(--kg-700);
+}
+
+[dir] .form-range::-webkit-slider-thumb {
+    background-color: var(--kg-600);
+}
+
+[dir] .form-range::-moz-range-thumb {
+    background-color: var(--kg-600);
+}
+
+/* Pagination (lists) */
+[dir] .pagination {
+    --bs-pagination-color: var(--kg-700);
+    --bs-pagination-hover-color: var(--kg-900);
+    --bs-pagination-hover-bg: var(--kg-50);
+    --bs-pagination-focus-color: var(--kg-900);
+    --bs-pagination-focus-bg: var(--kg-50);
+    --bs-pagination-focus-box-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color);
+    --bs-pagination-active-bg: var(--kg-700);
+    --bs-pagination-active-border-color: var(--kg-700);
+}
+
+[dir] .list-group {
+    --bs-list-group-active-bg: var(--kg-700);
+    --bs-list-group-active-border-color: var(--kg-700);
+}
+
+[dir] .progress,
+[dir] .progress-stacked {
+    --bs-progress-bar-bg: var(--kg-600);
+}
+
+[dir] .accordion {
+    --bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color);
+    --bs-accordion-active-color: var(--kg-900);
+    --bs-accordion-active-bg: var(--kg-50);
+    --bs-accordion-border-radius: var(--kg-radius);
+    --bs-accordion-inner-border-radius: calc(var(--kg-radius) - 1px);
+}
+
+[dir] .modal {
+    --bs-modal-border-radius: var(--kg-radius);
+    --bs-modal-inner-border-radius: calc(var(--kg-radius) - 1px);
+    --bs-modal-box-shadow: var(--kg-shadow-lg);
+}
+
+/* Chart boxes: rounder, softer */
+[dir] .wt-chart-box {
+    border-radius: var(--bs-border-radius);
+}
+
+/*
+ * Footer
+ */
+[dir] .wt-footers {
+    position: relative;
+    margin-top: 1rem;
+    padding: 2.25rem 1rem 2rem;
+    /* A divider that fades at the ends, with a gap for the island */
+    background: linear-gradient(90deg,
+        transparent, var(--kg-line) 15%, var(--kg-line) calc(50% - 2.25rem),
+        transparent calc(50% - 2.25rem), transparent calc(50% + 2.25rem),
+        var(--kg-line) calc(50% + 2.25rem), var(--kg-line) 85%, transparent) top / 100% 1px no-repeat;
+    text-align: center;
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+}
+
+[dir] .wt-footers::before {
+    content: "";
+    position: absolute;
+    top: -0.9rem;
+    left: 50%;
+    width: 2.75rem;
+    height: 1.75rem;
+    transform: translateX(-50%);
+    background-color: var(--kg-500);
+    -webkit-mask: var(--kg-island) center / contain no-repeat;
+    mask: var(--kg-island) center / contain no-repeat;
+}
+
+[dir] .wt-footer {
+    margin-block: 0.25rem;
+}
+
+[dir] .wt-footer a {
+    color: var(--kg-700);
+}
+
+/*
+ * Hard-coded colours in the core minimal theme (mostly webtrees 2.1, whose
+ * minimal theme uses black borders).  Only colours are changed, so border
+ * widths and sides stay as the core defines them.
+ */
+[dir] .wt-block,
+[dir] .wt-facts-table th,
+[dir] .wt-facts-table td,
+[dir] .list_table,
+[dir] .list_value,
+[dir] .list_value_wrap,
+[dir] .wt-block-content .list_table,
+[dir] .wt-block-content .list_value,
+[dir] .wt-block-content .list_value_wrap,
+[dir] .blockcontent .list_table,
+[dir] .blockcontent .list_value,
+[dir] .blockcontent .list_value_wrap,
+[dir] .descriptionbox,
+[dir] .optionbox,
+[dir] .wt-lifespans-summary,
+[dir] .wt-surnames-column-list,
+[dir] .markdown td,
+[dir] .markdown th {
+    border-color: var(--kg-line);
+}
+
+[dir] .wt-surnames-column-list {
+    column-rule-color: var(--kg-line);
+}
+
+[dir] table.faq,
+[dir] div.faq_title {
+    background-color: var(--kg-100);
+}
+
+[dir] div.faq_title {
+    border-radius: var(--bs-border-radius);
+    font-weight: 600;
+    color: var(--kg-900);
+}
+
+[dir] .odometer {
+    background: var(--kg-900);
+}
+
+[dir] .wt-footer-cookies {
+    background: var(--kg-800);
+}
+
+/* Interactive tree */
+[dir] #tv_tree div.tv_hline,
+[dir] #tv_tree div.tv_vline {
+    background-color: var(--kg-300);
+}
+
+[dir] #tv_tree div.tv_box {
+    border-color: var(--kg-300);
+}
+
+/*
+ * Small screens
+ */
+@media (max-width: 991.98px) {
+    [dir] .wt-header-search {
+        flex: 1 1 100%;
+        padding-top: 0;
+    }
+
+    [dir] .wt-genealogy-menu > .nav-item > .nav-link {
+        padding: 0.75rem 0.625rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    [dir] .wt-site-logo {
+        padding-block: 0.5rem 0.75rem;
+    }
+
+    [dir] .wt-site-logo::before,
+    [dir] .wt-site-logo::after {
+        width: 3rem;
+        height: 3rem;
+    }
+
+    [dir] .wt-site-logo::after {
+        inset-block-start: 0.5rem;
+    }
+
+    [dir] .wt-site-title {
+        padding-block: 0.5rem 0.75rem;
+    }
+
+    [dir] .wt-site-title::after {
+        font-size: 0.6875rem;
+        letter-spacing: 0.1em;
+    }
+
+    [dir] .wt-user-menu {
+        justify-content: center;
+    }
+
+    /* Icon-over-label tiles, so all items fit without a scrolling container (which would clip dropdowns) */
+    [dir] .wt-genealogy-menu {
+        gap: 0;
+        padding-block: 0.25rem;
+    }
+
+    [dir] .wt-genealogy-menu > .nav-item > .nav-link {
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 0.5rem 0.625rem;
+        font-size: 0.8125rem;
+    }
+
+    [dir] .wt-genealogy-menu > .nav-item > .nav-link::before {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+
+    [dir] .wt-genealogy-menu > .nav-item > .nav-link::after {
+        inset-inline: 0.5rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [dir] .wt-genealogy-menu > .nav-item > .nav-link,
+    [dir] .wt-genealogy-menu > .nav-item > .nav-link::before,
+    [dir] .wt-genealogy-menu > .nav-item > .nav-link::after,
+    [dir] .wt-header-search .input-group {
+        transition: none;
+    }
+}
+
+@media print {
+    [dir] body.wt-global {
+        background: #fff;
+    }
+
+    [dir] .card {
+        box-shadow: none;
+    }
+
+    [dir] .wt-footers::before {
+        display: none;
+    }
+}
