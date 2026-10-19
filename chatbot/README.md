@@ -116,15 +116,6 @@ Back in the settings, choose who can use it:
 
 To turn it off completely, disable the module in **Control panel → Modules → All modules**.
 
-### 6. If you used the old stand-alone chatbot
-
-Remove it, or visitors will see two chat buttons:
-
-- Delete the `chatbot_backend/` and `chatbot_widget/` folders from your website.
-- Remove the "Ask the AI" button code from **Control panel → Website → Header** (or wherever you added
-  it).
-- If `https://your-site/chatbot_backend/.env` could ever be downloaded, change your database password,
-  and delete that Gemini key in AI Studio.
 
 ---
 
