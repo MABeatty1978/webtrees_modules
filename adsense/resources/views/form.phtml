@@ -1,0 +1,22 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * @var string $ADSENSE_CLIENT_ID
+ */
+
+?>
+
+<div class="row mb-3">
+    <label for="ADSENSE_CLIENT_ID" class="col-sm-3 col-form-label">
+        Publisher ID
+        <span class="visually-hidden">Google AdSense</span>
+    </label>
+    <div class="col-sm-9">
+        <input type="text" class="form-control" id="ADSENSE_CLIENT_ID" name="ADSENSE_CLIENT_ID" value="<?= e($ADSENSE_CLIENT_ID) ?>" placeholder="ca-pub-1234567890123456" maxlength="255" pattern="ca-pub-[0-9]{10,20}">
+        <div class="form-text">
+            The <code>ca-pub-…</code> value from your AdSense account. Leave this empty to stop showing ads.
+        </div>
+    </div>
+</div>
