@@ -130,7 +130,7 @@ class QueryPlanner
             'maxOutputTokens'  => 512,
             'responseMimeType' => 'application/json',
             'responseSchema'   => self::SCHEMA,
-        ]);
+        ], 8);
 
         $data = $result === null ? null : json_decode($this->stripCodeFence($result['text']), true);
         $plan = $this->normalize($data);

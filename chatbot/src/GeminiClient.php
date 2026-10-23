@@ -32,6 +32,8 @@ class GeminiClient
 
     private string $last_error = '';
 
+    private int $timeout = 20;
+
     public function __construct(string $api_key)
     {
         $this->api_key = $api_key;
@@ -42,11 +44,16 @@ class GeminiClient
      * @param string                   $system   system instruction
      * @param array<array<string>>     $messages [['role' => 'user'|'model', 'text' => '...'], ...]
      * @param array<string,mixed>      $config   generationConfig, e.g. temperature, responseSchema
+     * @param int                      $timeout  seconds to wait for each request
      *
      * @return array{text:string,tokens_in:int,tokens_out:int}|null null on failure; see lastError()
      */
-    public function generate(string $model, string $system, array $messages, array $config): ?array
+    public function generate(string $model, string $system, array $messages, array $config, int $timeout = 20): ?array
     {
+        // webtrees holds a database connection open until the request finishes, and shared
+        // hosting limits how many can be open at once, so never wait long for Gemini.
+        $this->timeout = $timeout;
+
         $contents = [];
         foreach ($messages as $message) {
             $contents[] = [
@@ -150,7 +157,7 @@ class GeminiClient
             CURLOPT_POSTFIELDS     => json_encode($body),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_TIMEOUT        => $this->timeout,
             CURLOPT_HTTPHEADER     => [
                 'Content-Type: application/json',
                 // A header, not the URL, so the key never appears in server or proxy logs.
