@@ -24,8 +24,8 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Throwable;
 
-use function array_keys;
 use function array_map;
+use function array_unique;
 use function array_values;
 use function basename;
 use function count;
@@ -33,7 +33,6 @@ use function file_get_contents;
 use function glob;
 use function implode;
 use function in_array;
-use function is_array;
 use function json_encode;
 use function ksort;
 use function max;
@@ -43,17 +42,19 @@ use function preg_replace;
 use function redirect;
 use function response;
 use function route;
-use function sprintf;
+use function strtolower;
 use function trim;
-use function view;
 
 /**
- * Add events from the history of a place to the facts of the people who lived there.
+ * Add events from local history to the facts of the people connected to it.
  *
- * For example, a website about a family from a small town can show when the railway came,
- * when the mill burned down, or when the town got electricity, on the page of everyone who
- * lived there at the time.  The website owner chooses which places count, which people see
- * which events, and writes the list of events, on the module's settings page.
+ * Events are organised into named groups — for example "Springfield" for the town's own
+ * history, and "United States" for national events such as wars.  Each group has its own list
+ * of places and its own audience (either everyone in the tree, or only people connected to one
+ * of its places), and each event belongs to one group.  A website with only local history needs
+ * only one group; a more detailed one can layer local, regional and national history, each
+ * reaching the right people, without a county-wide event accidentally being shown to visitors
+ * from the other side of the world.
  *
  * Settings are under Control panel -> Modules -> Historic events -> Local history.
  * Turn the module on or off in the same place.
@@ -66,9 +67,6 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
     use ModuleCustomTrait;
     use ModuleHistoricEventsTrait;
 
-    public const SCOPE_CONNECTED = 'connected';
-    public const SCOPE_EVERYONE  = 'everyone';
-
     public const BASIS_LIFESPAN = 'lifespan';
     public const BASIS_WINDOW   = 'window';
 
@@ -77,8 +75,7 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
     private const DEFAULTS = [
         'TITLE'          => 'Local history',
         'DESCRIPTION'    => 'Add events from local history to the facts of the people who lived there.',
-        'PLACES'         => '',
-        'SCOPE'          => self::SCOPE_CONNECTED,
+        'GROUPS'         => '[]',
         'SRC_SPOUSE'     => '1',
         'SRC_PARENTS'    => '0',
         'PRESENCE_BASIS' => self::BASIS_LIFESPAN,
@@ -87,8 +84,8 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
         'EVENTS'         => '[]',
     ];
 
-    /** @var PlaceMatcher|null */
-    private $matcher;
+    /** @var array<string,PlaceMatcher>|null */
+    private $matchers;
 
     public function title(): string
     {
@@ -107,7 +104,7 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
 
     public function customModuleVersion(): string
     {
-        return '1.0.0';
+        return '2.0.0';
     }
 
     public function resourcesFolder(): string
@@ -121,11 +118,9 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
     }
 
     /**
-     * All events provided by this module, as GEDCOM.
-     *
-     * Later versions of webtrees pass the language, which does not matter here, as the events
-     * are written by the website owner, in whichever language they like.  It is optional, so
-     * this works with webtrees 2.1 as well.
+     * All events provided by this module, as GEDCOM.  Which of them any one person sees depends
+     * on their group, computed in historicEventsForIndividual() below; webtrees itself only ever
+     * calls that method, but the interface requires this one too.
      *
      * @return Collection<int,string>
      */
@@ -149,101 +144,84 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
      */
     public function historicEventsForIndividual(Individual $individual): Collection
     {
-        if ($this->preference('SCOPE') !== self::SCOPE_EVERYONE && !$this->isConnected($individual)) {
+        $groups = $this->groups();
+
+        if ($groups === []) {
             return new Collection();
         }
 
-        if ($this->preference('PRESENCE_BASIS') === self::BASIS_WINDOW) {
-            $window = $this->presenceWindow($individual);
+        $records = $this->connectedRecords($individual);
+        $basis   = $this->preference('PRESENCE_BASIS');
+        $tags    = PresenceWindow::parseTags($this->preference('PRESENCE_TAGS'));
 
-            // There is no dated fact at a matching place that counts as evidence of actually
-            // being there (for example, the person is only recorded as buried there) — so there
-            // is nothing to safely narrow down to.  Show no events, rather than guessing at their
-            // whole lifespan, which is exactly the over-eager behaviour this mode exists to avoid.
-            if ($window === null) {
-                return new Collection();
+        // Work out, once per group, whether this person is in its audience, and (if "time spent
+        // at the place" is chosen) the window of time they are known to have been there.
+        $connected      = [];
+        $windows        = [];
+        $groups_by_key  = [];
+
+        foreach ($groups as $group) {
+            $key                  = $group['key'];
+            $groups_by_key[$key]  = $group;
+
+            if ($group['scope'] === GroupList::SCOPE_EVERYONE) {
+                $connected[$key] = true;
+
+                continue;
             }
 
-            [$min_jd, $max_jd] = $window;
+            $matcher         = $this->matcher($key, $group['places']);
+            $connected[$key] = $this->isConnectedTo($records, $matcher);
 
-            $facts = $this->mappedFacts($individual)
-                ->filter(static function (Fact $fact) use ($min_jd, $max_jd): bool {
-                    $date = $fact->date();
-
-                    return $date->maximumJulianDay() >= $min_jd && $date->minimumJulianDay() <= $max_jd;
-                });
-        } else {
-            // The whole-lifespan rule this module has always used: an event is shown if it
-            // happened while the person was alive, regardless of where in the world they were.
-            $min_date = $individual->getEstimatedBirthDate();
-            $max_date = $individual->getEstimatedDeathDate();
-
-            $facts = $this->mappedFacts($individual)
-                ->filter(static function (Fact $fact) use ($min_date, $max_date): bool {
-                    return Date::compare($fact->date(), $min_date) >= 0 && Date::compare($fact->date(), $max_date) <= 0;
-                });
+            if ($connected[$key] && $basis === self::BASIS_WINDOW) {
+                $windows[$key] = PresenceWindow::find($records, $matcher, $tags);
+            }
         }
 
-        return $this->filterByMinimumAge($facts, $individual);
-    }
-
-    /**
-     * @return Collection<int,Fact>
-     */
-    private function mappedFacts(Individual $individual): Collection
-    {
-        return $this->historicEventsAll()
-            ->map(static function (string $gedcom) use ($individual): Fact {
-                return new Fact($gedcom, $individual, 'histo');
-            });
-    }
-
-    /**
-     * Optionally require the person to have reached a minimum age when the event happened — so
-     * an event is not shown merely because an infant was technically alive for its last few days.
-     * Applies whichever "Base events on" option is chosen.
-     *
-     * @param Collection<int,Fact> $facts
-     *
-     * @return Collection<int,Fact>
-     */
-    private function filterByMinimumAge(Collection $facts, Individual $individual): Collection
-    {
-        $min_age = (int) $this->preference('MIN_AGE');
-
-        if ($min_age === 0) {
-            return $facts;
+        if (!in_array(true, $connected, true)) {
+            return new Collection();
         }
 
-        $birth_date = $individual->getEstimatedBirthDate();
+        $min_age  = (int) $this->preference('MIN_AGE');
+        $birth    = $individual->getEstimatedBirthDate();
+        $death    = $individual->getEstimatedDeathDate();
+        $birth_jd = $birth->isOK() ? $birth->minimumJulianDay() : null;
 
-        if (!$birth_date->isOK()) {
-            return $facts;
+        $facts = new Collection();
+
+        foreach ($this->events() as $event) {
+            if (!$event['enabled'] || empty($connected[$event['group']])) {
+                continue;
+            }
+
+            $group = $groups_by_key[$event['group']];
+            $fact  = new Fact(EventList::toGedcom($event), $individual, 'histo');
+            $date  = $fact->date();
+
+            if ($basis === self::BASIS_WINDOW && $group['scope'] !== GroupList::SCOPE_EVERYONE) {
+                $window = $windows[$event['group']] ?? null;
+
+                // No dated fact at one of this group's places counts as evidence of actually
+                // being there (for example, the person is only recorded as buried there) — so
+                // there is nothing to safely narrow down to.  Skip the event, rather than
+                // guessing at their whole lifespan.
+                if ($window === null || $date->maximumJulianDay() < $window[0] || $date->minimumJulianDay() > $window[1]) {
+                    continue;
+                }
+            } else {
+                if (Date::compare($date, $birth) < 0 || Date::compare($date, $death) > 0) {
+                    continue;
+                }
+            }
+
+            if ($min_age > 0 && $birth_jd !== null && $date->minimumJulianDay() - $birth_jd < $min_age * 365) {
+                continue;
+            }
+
+            $facts->push($fact);
         }
 
-        $birth_jd = $birth_date->minimumJulianDay();
-        $min_days = $min_age * 365;
-
-        return $facts->filter(static function (Fact $fact) use ($birth_jd, $min_days): bool {
-            return $fact->date()->minimumJulianDay() - $birth_jd >= $min_days;
-        });
-    }
-
-    /**
-     * The span of time the person is known to have been at one of the listed places, using only
-     * their own dated facts there (and, if chosen, the facts of their families) that have one of
-     * the "Facts that count" tags.  Returns null when there is no such evidence — for example, a
-     * person connected to the place only by an undated fact, or only by their burial there.
-     *
-     * @return array{0:int,1:int}|null
-     */
-    private function presenceWindow(Individual $individual): ?array
-    {
-        return PresenceWindow::find(
-            $this->connectedRecords($individual),
-            $this->matcher(),
-            PresenceWindow::parseTags($this->preference('PRESENCE_TAGS'))
-        );
+        return $facts;
     }
 
     /**
@@ -258,22 +236,29 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
             $settings[$name] = $this->preference($name);
         }
 
+        $groups = $this->groups();
+        $events = $this->events();
+
         return $this->viewResponse($this->name() . '::settings', [
-            'title'       => $this->title(),
-            'settings'    => $settings,
-            'events'      => $this->events(),
-            'examples'    => $this->examples(),
-            'no_places'   => $settings['SCOPE'] !== self::SCOPE_EVERYONE && $this->matcher()->isEmpty(),
-            'action'      => route('module', ['module' => $this->name(), 'action' => 'Admin']),
-            'import'      => route('module', ['module' => $this->name(), 'action' => 'AdminImport']),
-            'export'      => route('module', ['module' => $this->name(), 'action' => 'AdminExport']),
-            'script'      => $this->assetUrl('js/settings.js'),
-            'max_events'  => EventList::MAX_EVENTS,
+            'title'      => $this->title(),
+            'settings'   => $settings,
+            'groups'     => $groups,
+            'events'     => $events,
+            'orphaned'   => $this->orphanedEvents($events, $groups),
+            'no_groups'  => $groups === [],
+            'examples'   => $this->examples(),
+            'ai_prompt'  => $this->aiPrompt($groups),
+            'action'     => route('module', ['module' => $this->name(), 'action' => 'Admin']),
+            'import'     => route('module', ['module' => $this->name(), 'action' => 'AdminImport']),
+            'export'     => route('module', ['module' => $this->name(), 'action' => 'AdminExport']),
+            'script'     => $this->assetUrl('js/settings.js'),
+            'max_events' => EventList::MAX_EVENTS,
+            'max_groups' => GroupList::MAX_GROUPS,
         ]);
     }
 
     /**
-     * Save the settings and events.
+     * Save the settings, groups and events.
      */
     public function postAdminAction(ServerRequestInterface $request): ResponseInterface
     {
@@ -283,32 +268,39 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
         $this->setPreference('TITLE', $title === '' ? self::DEFAULTS['TITLE'] : $title);
         $this->setPreference('DESCRIPTION', mb_substr(trim($body->string('DESCRIPTION', '')), 0, 200) ?: self::DEFAULTS['DESCRIPTION']);
 
-        $scope = $body->string('SCOPE', self::SCOPE_CONNECTED);
-        $this->setPreference('SCOPE', $scope === self::SCOPE_EVERYONE ? self::SCOPE_EVERYONE : self::SCOPE_CONNECTED);
         $this->setPreference('SRC_SPOUSE', $body->string('SRC_SPOUSE', '') === '1' ? '1' : '0');
         $this->setPreference('SRC_PARENTS', $body->string('SRC_PARENTS', '') === '1' ? '1' : '0');
 
         $basis = $body->string('PRESENCE_BASIS', self::BASIS_LIFESPAN);
         $this->setPreference('PRESENCE_BASIS', $basis === self::BASIS_WINDOW ? self::BASIS_WINDOW : self::BASIS_LIFESPAN);
 
-        $tags = PresenceWindow::cleanTags($body->string('PRESENCE_TAGS', ''));
-        $this->setPreference('PRESENCE_TAGS', $tags);
+        $this->setPreference('PRESENCE_TAGS', PresenceWindow::cleanTags($body->string('PRESENCE_TAGS', '')));
 
         $min_age = (int) $body->string('MIN_AGE', '0');
         $this->setPreference('MIN_AGE', (string) max(0, min(self::MAX_MIN_AGE, $min_age)));
 
-        [$places, $dropped] = EventList::cleanPlaces($body->string('PLACES', ''));
-        $this->setPreference('PLACES', $places);
+        [$groups, $group_errors] = GroupList::clean($body->array('groups'));
+        $this->saveGroups($groups);
 
-        foreach ($dropped as $line) {
-            FlashMessages::addMessage('The place pattern “' . $line . '” is not a valid regular expression, so it was not saved.', 'danger');
+        foreach ($group_errors as $error) {
+            FlashMessages::addMessage($error, 'danger');
         }
 
-        [$events, $errors] = EventList::clean($body->array('events'));
+        [$events, $event_errors] = EventList::clean($body->array('events'));
         $this->saveEvents($events);
 
-        foreach ($errors as $error) {
+        foreach ($event_errors as $error) {
             FlashMessages::addMessage($error, 'danger');
+        }
+
+        $orphaned = $this->orphanedEvents($events, $groups);
+
+        if ($orphaned !== []) {
+            $titles = implode(', ', array_map(static function (array $event): string {
+                return $event['title'];
+            }, $orphaned));
+
+            FlashMessages::addMessage('Nobody will see these events, because they are assigned to a group that no longer exists: ' . $titles . '. Re-assign them to a group, below, or delete them.', 'warning');
         }
 
         FlashMessages::addMessage(I18N::translate('The preferences for the module “%s” have been updated.', $this->title()), 'success');
@@ -317,14 +309,14 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
     }
 
     /**
-     * Add events from an example file, or from pasted text.
+     * Add groups and events from an example file, or from pasted text.
      */
     public function postAdminImportAction(ServerRequestInterface $request): ResponseInterface
     {
         $body = Validator::parsedBody($request);
 
         $file = $body->string('example', '');
-        $json = $file === '' ? $body->string('json', '') : $this->exampleJson($file);
+        $json = $file === '' ? self::stripCodeFence($body->string('json', '')) : $this->exampleJson($file);
         $pack = $json === null ? null : EventList::fromJson($json);
 
         if ($pack === null) {
@@ -337,22 +329,43 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
             FlashMessages::addMessage($error, 'warning');
         }
 
-        if ($body->string('mode', 'add') === 'replace') {
-            $existing = [];
-        } else {
-            $existing = $this->events();
+        $replace = $body->string('mode', 'add') === 'replace';
+
+        $groups       = $replace ? [] : $this->groups();
+        $group_keys   = GroupList::keys($groups);
+        $groups_added = 0;
+        $kept_local   = [];
+
+        foreach ($pack['groups'] as $group) {
+            if (in_array($group['key'], $group_keys, true)) {
+                $kept_local[] = $group['label'];
+
+                continue;
+            }
+
+            if (count($groups) >= GroupList::MAX_GROUPS) {
+                continue;
+            }
+
+            $groups[]     = $group;
+            $group_keys[] = $group['key'];
+            $groups_added++;
         }
 
-        [$events, $added] = EventList::merge($existing, $pack['events']);
+        $this->saveGroups($groups);
+
+        $existing_events        = $replace ? [] : $this->events();
+        [$events, $events_added] = EventList::merge($existing_events, $pack['events']);
         $this->saveEvents($events);
 
-        $message = $added === 1 ? 'Added 1 event.' : 'Added ' . $added . ' events.';
+        $message = $events_added === 1 ? 'Added 1 event.' : 'Added ' . $events_added . ' events.';
 
-        // Packs can say which places they are about.  Add them to the list, unless they are already there.
-        if ($body->string('add_places', '') === '1' && $pack['places'] !== []) {
-            [$places] = EventList::cleanPlaces(trim($this->preference('PLACES') . "\n" . implode("\n", $pack['places'])));
-            $this->setPreference('PLACES', $places);
-            $message .= ' The places it is about were added to the list of places.';
+        if ($groups_added > 0) {
+            $message .= ' ' . ($groups_added === 1 ? 'Added 1 new group.' : 'Added ' . $groups_added . ' new groups.');
+        }
+
+        if ($kept_local !== []) {
+            $message .= ' These groups already existed, and were left as they are: ' . implode(', ', array_unique($kept_local)) . '.';
         }
 
         FlashMessages::addMessage($message, 'success');
@@ -361,14 +374,14 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
     }
 
     /**
-     * Download the places and events as a file, to back them up or share them.
+     * Download the groups and events as a file, to back them up or share them.
      */
     public function getAdminExportAction(ServerRequestInterface $request): ResponseInterface
     {
         $data = [
             'name'        => $this->title(),
             'description' => $this->description(),
-            'places'      => PlaceMatcher::lines($this->preference('PLACES')),
+            'groups'      => $this->groups(),
             'events'      => $this->events(),
         ];
 
@@ -378,6 +391,105 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
         return response((string) $json)
             ->withHeader('content-type', 'application/json; charset=UTF-8')
             ->withHeader('content-disposition', 'attachment; filename="' . $name . '.json"');
+    }
+
+    /**
+     * AI assistants asked for JSON sometimes wrap it in a Markdown code fence even when told not
+     * to.  Strip one off, so pasting their answer straight in still works.
+     */
+    private static function stripCodeFence(string $text): string
+    {
+        return trim((string) preg_replace('/^\s*```(?:json)?\s*|\s*```\s*$/', '', trim($text)));
+    }
+
+    /**
+     * A prompt someone can paste into an AI assistant, to research local history and write it
+     * back out in the exact format the "Import" box below accepts.  If the website owner has
+     * already set up a group, its name is used as a starting example, so the prompt is useful
+     * to copy and adjust rather than needing to be built from nothing.
+     *
+     * @param array<array<string,mixed>> $groups
+     */
+    private function aiPrompt(array $groups): string
+    {
+        $place = $groups[0]['label'] ?? 'Springfield, Clark County, Ohio';
+
+        return <<<PROMPT
+            I'm researching local history to add to a family history website, using a tool that reads a
+            specific JSON format. Please research real, verifiable events from the history of:
+
+            {$place}
+
+            Covering approximately: [a time period, e.g. 1800 to 1950]
+
+            Write about 15–25 events: things like when the place was founded, named or incorporated; a
+            railway, road or other transport link arriving; a major fire, flood, storm or other disaster;
+            the main local industry starting, booming or closing; a notable building, school or church
+            opening; a well-known local event or visitor; and local effects of national events (wars,
+            Prohibition, the Depression) — but only where there is a genuinely local detail to add, not just
+            "the country was at war". Avoid vague or undated events.
+
+            Reply with ONLY a JSON file in exactly this format, and nothing else before or after it:
+
+            {
+              "name": "A short name for this set of events",
+              "description": "One or two sentences describing it",
+              "groups": [
+                {
+                  "label": "A short name for this place",
+                  "places": "One place name per line, as it might appear in a family tree, e.g.:\\nSpringfield, Clark, Ohio, USA\\nSpringfield, Ohio",
+                  "scope": "connected"
+                }
+              ],
+              "events": [
+                {
+                  "date": "a GEDCOM date — see the formats below",
+                  "title": "A short title, e.g. The railway arrives",
+                  "text": "One or two sentences describing what happened.",
+                  "group": "the label of one of the groups above",
+                  "note": "optional — start with \\"Check:\\" if you are not fully confident about this date or detail"
+                }
+              ]
+            }
+
+            Dates must use these exact GEDCOM forms:
+            - "1850" for a year
+            - "ABT 1850" for about a year
+            - "19 SEP 1864" for an exact day (month abbreviations: JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC)
+            - "FROM 1861 TO 1865" for something that lasted several years
+            - "BEF 1940" or "AFT 1940" for before or after a date
+            - "BET 1880 AND 1890" for sometime within a range
+
+            Rules:
+            - Every event needs a real date and a source you are reasonably confident in. Do not invent events,
+              names or dates.
+            - If you are not fully sure of a date or a detail, still include the event, but say so in its
+              "note" field, starting with "Check:", rather than silently guessing.
+            - If some events are specific to the place above, and others are really about a wider region, state
+              or country that happens to include it (a war, a national depression, a widely-felt storm), put
+              the wider ones in a second group, with "scope": "everyone" and "places": "", so they are not
+              limited to people connected to the local place. Otherwise, one group is enough.
+            - Keep each event's "text" to one or two plain-English sentences.
+            PROMPT;
+    }
+
+    /**
+     * The saved groups.
+     *
+     * @return array<array<string,mixed>>
+     */
+    private function groups(): array
+    {
+        return GroupList::decode($this->preference('GROUPS'));
+    }
+
+    /**
+     * @param array<array<string,mixed>> $groups
+     */
+    private function saveGroups(array $groups): void
+    {
+        $this->setPreference('GROUPS', (string) json_encode(array_values($groups), JSON_UNESCAPED_UNICODE));
+        $this->matchers = null;
     }
 
     /**
@@ -399,9 +511,32 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
     }
 
     /**
+     * Enabled events whose group no longer exists.  Nobody sees these; the settings page warns
+     * about them rather than silently hiding the problem.
+     *
+     * @param array<array<string,mixed>> $events
+     * @param array<array<string,mixed>> $groups
+     *
+     * @return array<array<string,mixed>>
+     */
+    private function orphanedEvents(array $events, array $groups): array
+    {
+        $keys     = GroupList::keys($groups);
+        $orphaned = [];
+
+        foreach ($events as $event) {
+            if ($event['enabled'] && !in_array($event['group'], $keys, true)) {
+                $orphaned[] = $event;
+            }
+        }
+
+        return $orphaned;
+    }
+
+    /**
      * The example files in the examples folder.
      *
-     * @return array<string,array{name:string,description:string,events:int,places:int}> indexed by file name
+     * @return array<string,array{name:string,description:string,events:int,groups:int}> indexed by file name
      */
     private function examples(): array
     {
@@ -416,7 +551,7 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
                     'name'        => $pack['name'] ?: $file,
                     'description' => $pack['description'],
                     'events'      => count($pack['events']),
-                    'places'      => count($pack['places']),
+                    'groups'      => count($pack['groups']),
                 ];
             }
         }
@@ -431,7 +566,7 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
      */
     private function exampleJson(string $file): ?string
     {
-        if (!in_array($file, array_map('strval', array_keys($this->examples())), true)) {
+        if (!isset($this->examples()[$file])) {
             return null;
         }
 
@@ -441,18 +576,22 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
     }
 
     /**
-     * Has this person, or a family they belong to, a place from the list?
+     * Is this person, or a family record also being looked at, somewhere on the list of places?
      * Only facts the visitor is allowed to see are used.
+     *
+     * @param array<GedcomRecord> $records
      */
-    private function isConnected(Individual $individual): bool
+    private function isConnectedTo(array $records, PlaceMatcher $matcher): bool
     {
-        if ($this->matcher()->isEmpty()) {
+        if ($matcher->isEmpty()) {
             return false;
         }
 
-        foreach ($this->connectedRecords($individual) as $record) {
-            if ($this->hasMatchingPlace($record)) {
-                return true;
+        foreach ($records as $record) {
+            foreach ($record->facts() as $fact) {
+                if ($matcher->matches($fact->place()->gedcomName())) {
+                    return true;
+                }
             }
         }
 
@@ -461,8 +600,6 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
 
     /**
      * The person's own record, plus any families the "Also look at" settings say to include.
-     * Used both to decide whether someone is connected to a place, and, if "time spent at the
-     * place" is chosen, which facts may narrow down when.
      *
      * @return array<GedcomRecord>
      */
@@ -485,24 +622,17 @@ class LocalHistoryModule extends AbstractModule implements ModuleConfigInterface
         return $records;
     }
 
-    private function hasMatchingPlace(GedcomRecord $record): bool
+    private function matcher(string $key, string $places): PlaceMatcher
     {
-        foreach ($record->facts() as $fact) {
-            if ($this->matcher()->matches($fact->place()->gedcomName())) {
-                return true;
-            }
+        if ($this->matchers === null) {
+            $this->matchers = [];
         }
 
-        return false;
-    }
-
-    private function matcher(): PlaceMatcher
-    {
-        if ($this->matcher === null) {
-            $this->matcher = new PlaceMatcher($this->preference('PLACES'));
+        if (!isset($this->matchers[$key])) {
+            $this->matchers[$key] = new PlaceMatcher($places);
         }
 
-        return $this->matcher;
+        return $this->matchers[$key];
     }
 
     private function preference(string $name): string

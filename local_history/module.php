@@ -10,8 +10,9 @@ declare(strict_types=1);
 
 namespace MichaelBeatty\WebtreesModules\LocalHistory;
 
-require_once __DIR__ . '/src/EventList.php';
 require_once __DIR__ . '/src/PlaceMatcher.php';
+require_once __DIR__ . '/src/GroupList.php';
+require_once __DIR__ . '/src/EventList.php';
 require_once __DIR__ . '/src/PresenceWindow.php';
 require_once __DIR__ . '/LocalHistoryModule.php';
 

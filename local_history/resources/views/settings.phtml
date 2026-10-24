@@ -7,25 +7,73 @@ use Fisharebest\Webtrees\Http\RequestHandlers\ModulesHistoricEventsPage;
 use Fisharebest\Webtrees\I18N;
 
 /**
- * @var string                                                                       $action
- * @var array<array<string,mixed>>                                                   $events
- * @var array<string,array{name:string,description:string,events:int,places:int}>    $examples
- * @var string                                                                       $export
- * @var string                                                                       $import
- * @var int                                                                          $max_events
- * @var bool                                                                         $no_places
- * @var string                                                                       $script
- * @var array<string,string>                                                         $settings
- * @var string                                                                       $title
+ * @var string                                                                    $action
+ * @var string                                                                    $ai_prompt
+ * @var array<array<string,mixed>>                                               $events
+ * @var array<string,array{name:string,description:string,events:int,groups:int}> $examples
+ * @var string                                                                    $export
+ * @var array<array<string,mixed>>                                               $groups
+ * @var string                                                                    $import
+ * @var int                                                                       $max_events
+ * @var int                                                                       $max_groups
+ * @var bool                                                                      $no_groups
+ * @var array<array<string,mixed>>                                               $orphaned
+ * @var string                                                                    $script
+ * @var array<string,string>                                                     $settings
+ * @var string                                                                    $title
  */
 
-// One event, as a group of form fields.  The index only has to be different for each event.
-$event_fields = static function (string $index, array $event): string {
+// One group, as a block of form fields.  The index only has to be different for each group.
+$group_fields = static function (string $index, array $group): string {
+    $e = static function (string $text): string {
+        return e($text);
+    };
+
+    $id = 'group-' . $index;
+
+    return
+        '<div class="lh-group border rounded p-3 mb-3">' .
+        '<input type="hidden" name="groups[' . $index . '][key]" value="' . $e($group['key']) . '">' .
+        '<div class="row g-2">' .
+        '<div class="col-md-4"><label class="form-label" for="' . $id . '-label">Name</label>' .
+        '<input class="form-control" type="text" id="' . $id . '-label" name="groups[' . $index . '][label]" value="' . $e($group['label']) . '" maxlength="60" placeholder="e.g. Springfield"></div>' .
+        '<div class="col-md-8"><label class="form-label" for="' . $id . '-places">Places <span class="text-muted">(one per line; not needed if shown to everyone)</span></label>' .
+        '<textarea class="form-control font-monospace" id="' . $id . '-places" name="groups[' . $index . '][places]" rows="2" placeholder="Springfield&#10;Clark County, Ohio">' . $e($group['places']) . '</textarea></div>' .
+        '<div class="col-md-8">' .
+        '<div class="form-check form-check-inline">' .
+        '<input class="form-check-input" type="radio" name="groups[' . $index . '][scope]" id="' . $id . '-connected" value="connected"' . ($group['scope'] !== 'everyone' ? ' checked' : '') . '>' .
+        '<label class="form-check-label" for="' . $id . '-connected">Only people connected to one of its places</label>' .
+        '</div>' .
+        '<div class="form-check form-check-inline">' .
+        '<input class="form-check-input" type="radio" name="groups[' . $index . '][scope]" id="' . $id . '-everyone" value="everyone"' . ($group['scope'] === 'everyone' ? ' checked' : '') . '>' .
+        '<label class="form-check-label" for="' . $id . '-everyone">Everyone in the family tree</label>' .
+        '</div>' .
+        '</div>' .
+        '<div class="col-md-4 d-flex align-items-center">' .
+        '<div class="form-check"><input class="form-check-input" type="checkbox" id="' . $id . '-delete" name="groups[' . $index . '][delete]" value="1">' .
+        '<label class="form-check-label" for="' . $id . '-delete">Delete this group</label></div>' .
+        '</div>' .
+        '</div>' .
+        '</div>';
+};
+
+// One event, as a block of form fields.  $groups fills the "Group" dropdown.
+$event_fields = static function (string $index, array $event) use ($groups): string {
     $e = static function (string $text): string {
         return e($text);
     };
 
     $id = 'event-' . $index;
+
+    if ($groups === []) {
+        $group_options = '<option value="">(add a group below first)</option>';
+    } else {
+        $group_options = '';
+
+        foreach ($groups as $group) {
+            $group_options .= '<option value="' . $e($group['key']) . '"' . ($event['group'] === $group['key'] ? ' selected' : '') . '>' . $e($group['label']) . '</option>';
+        }
+    }
 
     return
         '<div class="lh-event border rounded p-3 mb-3">' .
@@ -34,7 +82,9 @@ $event_fields = static function (string $index, array $event): string {
         '<input class="form-control" type="text" id="' . $id . '-date" name="events[' . $index . '][date]" value="' . $e($event['date']) . '" maxlength="60" placeholder="e.g. 1850 or FROM 1861 TO 1865"></div>' .
         '<div class="col-md-5"><label class="form-label" for="' . $id . '-title">Title</label>' .
         '<input class="form-control" type="text" id="' . $id . '-title" name="events[' . $index . '][title]" value="' . $e($event['title']) . '" maxlength="100" placeholder="e.g. The railway arrives"></div>' .
-        '<div class="col-md-4"><label class="form-label" for="' . $id . '-place">Place <span class="text-muted">(optional)</span></label>' .
+        '<div class="col-md-4"><label class="form-label" for="' . $id . '-group">Group</label>' .
+        '<select class="form-select" id="' . $id . '-group" name="events[' . $index . '][group]">' . $group_options . '</select></div>' .
+        '<div class="col-md-8"><label class="form-label" for="' . $id . '-place">Place <span class="text-muted">(optional, shown with the event)</span></label>' .
         '<input class="form-control" type="text" id="' . $id . '-place" name="events[' . $index . '][place]" value="' . $e($event['place']) . '" maxlength="200"></div>' .
         '<div class="col-12"><label class="form-label" for="' . $id . '-text">Description <span class="text-muted">(optional)</span></label>' .
         '<textarea class="form-control" id="' . $id . '-text" name="events[' . $index . '][text]" rows="2" maxlength="500">' . $e($event['text']) . '</textarea></div>' .
@@ -50,64 +100,101 @@ $event_fields = static function (string $index, array $event): string {
         '</div>';
 };
 
-$blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => '', 'enabled' => true];
+$blank_group = ['key' => '', 'label' => '', 'places' => '', 'scope' => 'connected'];
+$blank_event = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => '', 'group' => $groups[0]['key'] ?? '', 'enabled' => true];
 
 ?>
 
 <?= view('components/breadcrumbs', ['links' => [route(ControlPanel::class) => I18N::translate('Control panel'), route(ModulesHistoricEventsPage::class) => I18N::translate('Historic events'), $title]]) ?>
 
+<style>
+    /* Keeps Save/Cancel on screen without having to scroll past every group and event. */
+    .lh-save-bar {
+        position: sticky;
+        bottom: 0;
+        z-index: 1020;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 0;
+        margin-top: 1rem;
+        background-color: var(--bs-body-bg);
+        border-top: 1px solid var(--bs-border-color);
+        box-shadow: 0 -0.25rem 0.5rem rgba(0, 0, 0, 0.08);
+    }
+
+    /* Leaves room so a newly-added row doesn't end up hidden behind the bar above. */
+    .lh-group, .lh-event {
+        scroll-margin-bottom: 6rem;
+    }
+
+    /* A brief highlight so it's obvious a new row has actually appeared. */
+    .lh-row-new {
+        animation: lh-row-new-fade 2s ease-out;
+    }
+
+    @keyframes lh-row-new-fade {
+        from { background-color: var(--bs-warning-bg-subtle, #fff3cd); }
+        to   { background-color: transparent; }
+    }
+</style>
+
 <h1><?= e($title) ?></h1>
 
 <p>
-    Shows events from local history on the pages of the people who lived there, if they were alive at the time.
-    For example, when the railway arrived or the mill burned down.
+    Shows events from local history on the pages of the people connected to it, if they were alive at the time.
+    For example, when the railway arrived, when the mill burned down, or a war that touched everyone.
 </p>
 
-<?php if ($no_places) : ?>
+<?php if ($no_groups) : ?>
+    <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <strong>Nobody will see any events yet.</strong>
+            Add at least one group, and either give it some places or set it to show to everyone.
+        </div>
+        <button type="button" class="btn btn-warning flex-shrink-0" data-trigger="lh-groups-add">
+            <?= view('icons/add') ?> Add a group
+        </button>
+    </div>
+<?php endif ?>
+
+<?php if ($orphaned !== []) : ?>
     <div class="alert alert-warning">
-        <strong>Nobody will see any events yet.</strong>
-        Under <em>Which people see the events</em>, list the places your events are about, or choose to show them to everyone.
+        <strong>Nobody will see these events, because they are assigned to a group that no longer exists:</strong>
+        <?= e(implode(', ', array_map(static fn (array $event): string => $event['title'], $orphaned))) ?>.
+        Re-assign them to a group, below, or delete them.
     </div>
 <?php endif ?>
 
 <form method="post" action="<?= e($action) ?>">
-    <h2 class="h4 mt-4">Which people see the events</h2>
+    <h2 class="h4 mt-4">Groups</h2>
 
-    <fieldset class="row mb-3">
-        <legend class="col-form-label col-sm-3 pt-0">Show events to</legend>
-        <div class="col-sm-9">
-            <div class="form-check">
-                <input class="form-check-input" type="radio" name="SCOPE" id="SCOPE-connected" value="connected" <?= $settings['SCOPE'] === 'connected' ? 'checked' : '' ?>>
-                <label class="form-check-label" for="SCOPE-connected">Only people connected to one of the places below</label>
-            </div>
-            <div class="form-check">
-                <input class="form-check-input" type="radio" name="SCOPE" id="SCOPE-everyone" value="everyone" <?= $settings['SCOPE'] === 'everyone' ? 'checked' : '' ?>>
-                <label class="form-check-label" for="SCOPE-everyone">Everyone in the family tree</label>
-            </div>
-            <div class="form-text">
-                Either way, an event is only shown to a person who was alive when it happened.
-                Choose the first for local events, so that people from elsewhere don’t get them.
-                Choose the second for events that affected everyone, such as wars.
-            </div>
-        </div>
-    </fieldset>
+    <p class="text-muted">
+        A group is a place (or set of places) and an audience. A simple site needs only one group,
+        shown either to everyone or only to people connected to its places. A more detailed site can have
+        several — for example, a town's own history shown only to people connected to it, alongside a
+        national history shown to everyone. Each event, further down the page, belongs to one group.
+    </p>
 
-    <div class="row mb-3">
-        <label for="PLACES" class="col-sm-3 col-form-label">Places</label>
-        <div class="col-sm-9">
-            <textarea class="form-control font-monospace" id="PLACES" name="PLACES" rows="4" placeholder="Springfield&#10;Clark County, Ohio"><?= e($settings['PLACES']) ?></textarea>
-            <div class="form-text">
-                One place on each line. A person is connected to a place if it appears in the place of any of
-                their facts, such as birth, death or residence. Capital letters, apostrophes and extra spaces are ignored,
-                so <code>Kelleys Island</code> also finds <code>Kelley’s Island, Ohio</code>.
-                Use a whole name, not just <code>Erie</code>, or places you didn’t mean will match too.
-                <br>
-                For spelling variations, start and end a line with a slash to use a
-                <a href="https://www.php.net/manual/en/reference.pcre.pattern.syntax.php" target="_blank" rel="noopener noreferrer">regular expression</a>, such as
-                <code>/\bSpring?field\b/i</code>.
-            </div>
-        </div>
+    <div id="lh-groups">
+        <?php foreach ($groups as $index => $group) : ?>
+            <?= $group_fields((string) $index, $group) ?>
+        <?php endforeach ?>
+
+        <?php if ($groups === []) : ?>
+            <?= $group_fields('0', $blank_group) ?>
+        <?php endif ?>
     </div>
+
+    <template id="lh-groups-template"><?= $group_fields('__INDEX__', $blank_group) ?></template>
+
+    <p class="d-flex flex-wrap align-items-center gap-2">
+        <button type="button" class="btn btn-outline-primary" id="lh-groups-add" data-add="lh-groups" data-template="lh-groups-template" data-count="1" data-next="<?= max(count($groups), 1) ?>">
+            <?= view('icons/add') ?> Add a group
+        </button>
+        <span class="text-muted">New groups aren’t saved until you press <strong>Save</strong>, below.</span>
+        <span class="text-muted ms-auto"><?= count($groups) ?> groups saved, up to <?= (int) $max_groups ?>.</span>
+    </p>
 
     <fieldset class="row mb-3">
         <legend class="col-form-label col-sm-3 pt-0">Also look at</legend>
@@ -120,7 +207,7 @@ $blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => ''
                 <input class="form-check-input" type="checkbox" id="SRC_PARENTS" name="SRC_PARENTS" value="1" <?= $settings['SRC_PARENTS'] === '1' ? 'checked' : '' ?>>
                 <label class="form-check-label" for="SRC_PARENTS">Facts of their parents’ family (for example, their parents’ marriage in the town)</label>
             </div>
-            <div class="form-text">A person’s own facts are always used.</div>
+            <div class="form-text">Applies to every group above. A person’s own facts are always used.</div>
         </div>
     </fieldset>
 
@@ -138,13 +225,16 @@ $blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => ''
                 <label class="form-check-label" for="PRESENCE_BASIS-window">Only the time they are known to have spent at the place</label>
             </div>
             <div class="form-text">
-                <strong>Whole lifespan</strong> shows an event to anyone connected to the place who was alive when it
-                happened, even if they had moved away by then, or only arrived afterwards.
+                Applies to every group whose audience is <em>people connected to its places</em> — a group shown to
+                everyone has no places to measure time spent at, so it always uses the whole lifespan.
+                <br>
+                <strong>Whole lifespan</strong> shows an event to anyone connected to a group's places who was alive
+                when it happened, even if they had moved away by then, or only arrived afterwards.
                 <br>
                 <strong>Time spent at the place</strong> is narrower: it looks at the person's own dated facts there
                 (for example a birth, a census, or a residence — see <em>Facts that count</em>, below) and only shows
                 events from between the earliest and latest of those.
-                A person connected to the place only by an undated fact, or only by their burial there, gets
+                A person connected to a group only by an undated fact, or only by their burial there, gets
                 <strong>no events at all</strong> this way, rather than guessing at their whole lifespan — someone
                 whose body was brought to a place for burial did not necessarily ever live there.
                 This needs a reasonably detailed tree: a bare birth and death, with nothing else recorded at the
@@ -179,7 +269,7 @@ $blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => ''
             <div class="form-text">
                 Only show an event to someone who had already reached this age when it happened, so an event is not
                 shown to a baby merely because they were technically alive for its last few days. 0 means no minimum.
-                Applies whichever option is chosen above.
+                Applies to every group.
             </div>
         </div>
     </div>
@@ -231,27 +321,34 @@ $blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => ''
             <?= $event_fields((string) $index, $event) ?>
         <?php endforeach ?>
 
-        <?php for ($i = 0; $i < 3; $i++) : ?>
-            <?= $event_fields((string) (count($events) + $i), $blank) ?>
-        <?php endfor ?>
+        <?php if ($events === []) : ?>
+            <?= $event_fields('0', $blank_event) ?>
+        <?php endif ?>
     </div>
 
-    <template id="lh-template"><?= $event_fields('__INDEX__', $blank) ?></template>
+    <template id="lh-events-template"><?= $event_fields('__INDEX__', $blank_event) ?></template>
 
-    <p>
-        <button type="button" class="btn btn-outline-secondary" id="lh-add" data-next="<?= count($events) + 3 ?>">Add 3 more events</button>
-        <span class="text-muted ms-2"><?= count($events) ?> events saved, up to <?= (int) $max_events ?>.</span>
+    <p class="d-flex flex-wrap align-items-center gap-2">
+        <button type="button" class="btn btn-outline-primary" id="lh-events-add" data-add="lh-events" data-template="lh-events-template" data-count="1" data-next="<?= max(count($events), 1) ?>">
+            <?= view('icons/add') ?> Add an event
+        </button>
+        <span class="text-muted">New events aren’t saved until you press <strong>Save</strong>, below.</span>
+        <span class="text-muted ms-auto"><?= count($events) ?> events saved, up to <?= (int) $max_events ?>.</span>
     </p>
 
-    <button type="submit" class="btn btn-primary">
-        <?= view('icons/save') ?>
-        <?= I18N::translate('save') ?>
-    </button>
+    <div class="lh-save-bar">
+        <button type="submit" class="btn btn-primary">
+            <?= view('icons/save') ?>
+            <?= I18N::translate('save') ?>
+        </button>
 
-    <a href="<?= e(route(ModulesHistoricEventsPage::class)) ?>" class="btn btn-secondary">
-        <?= view('icons/cancel') ?>
-        <?= I18N::translate('cancel') ?>
-    </a>
+        <a href="<?= e(route(ModulesHistoricEventsPage::class)) ?>" class="btn btn-secondary">
+            <?= view('icons/cancel') ?>
+            <?= I18N::translate('cancel') ?>
+        </a>
+
+        <span class="text-muted ms-2 small d-none d-sm-inline"><?= count($groups) ?> groups, <?= count($events) ?> events</span>
+    </div>
 
     <?= csrf_field() ?>
 </form>
@@ -263,8 +360,9 @@ $blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => ''
 <?php if ($examples !== []) : ?>
     <h3 class="h5 mt-4">Example sets of events</h3>
     <p class="text-muted">
-        These are ready-made lists to start from. Check the facts before you rely on them, and edit them to suit your family.
-        Adding a list keeps your existing events, and skips any that are already there.
+        These are ready-made lists to start from, including their own groups. Check the facts before you rely on
+        them, and edit them to suit your family. Adding a set keeps your existing groups and events; a group it
+        defines that you already have (by name) is left as you have it, and its events still join it.
     </p>
 
     <?php foreach ($examples as $file => $example) : ?>
@@ -275,18 +373,12 @@ $blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => ''
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
                 <div>
                     <strong><?= e($example['name']) ?></strong>
-                    <span class="text-muted">— <?= (int) $example['events'] ?> events</span>
+                    <span class="text-muted">— <?= (int) $example['groups'] ?> groups, <?= (int) $example['events'] ?> events</span>
                     <?php if ($example['description'] !== '') : ?>
                         <div class="text-muted"><?= e($example['description']) ?></div>
                     <?php endif ?>
-                    <?php if ($example['places'] > 0) : ?>
-                        <div class="form-check mt-2">
-                            <input class="form-check-input" type="checkbox" id="places-<?= e($file) ?>" name="add_places" value="1" checked>
-                            <label class="form-check-label" for="places-<?= e($file) ?>">Also add the places it is about to the list of places</label>
-                        </div>
-                    <?php endif ?>
                 </div>
-                <button type="submit" class="btn btn-outline-primary">Add these events</button>
+                <button type="submit" class="btn btn-outline-primary">Add these</button>
             </div>
         </form>
     <?php endforeach ?>
@@ -294,29 +386,40 @@ $blank = ['date' => '', 'title' => '', 'text' => '', 'place' => '', 'note' => ''
 
 <h3 class="h5 mt-4">Export</h3>
 <p>
-    <a href="<?= e($export) ?>" class="btn btn-outline-secondary">Download places and events</a>
+    <a href="<?= e($export) ?>" class="btn btn-outline-secondary">Download groups and events</a>
     <span class="text-muted ms-2">A file you can keep as a backup, or give to someone else to import.</span>
 </p>
+
+<h3 class="h5 mt-4">Ask an AI to research events for you</h3>
+<p class="text-muted">
+    Don't want to write the list yourself? Copy this prompt, paste it into an AI assistant (such as
+    Claude or ChatGPT), and fill in the place and the rough time period at the top. Check the reply
+    for anything marked <code>Check:</code> — and ideally the rest of it too, since an AI can still get
+    local history wrong — then paste its reply into the <em>Import</em> box below.
+</p>
+<details class="mb-4">
+    <summary>Show the prompt</summary>
+    <div class="mt-2">
+        <textarea class="form-control font-monospace" id="lh-ai-prompt" rows="10" readonly onclick="this.select()"><?= e($ai_prompt) ?></textarea>
+        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="lh-ai-prompt-copy" data-copy="lh-ai-prompt">Copy</button>
+    </div>
+</details>
 
 <h3 class="h5 mt-4">Import</h3>
 <form method="post" action="<?= e($import) ?>">
     <div class="mb-3">
-        <label for="json" class="form-label">Paste the contents of a file made by <em>Export</em></label>
+        <label for="json" class="form-label">Paste the contents of a file made by <em>Export</em>, one of the examples, or an AI assistant's reply to the prompt above</label>
         <textarea class="form-control font-monospace" id="json" name="json" rows="5" required></textarea>
     </div>
 
     <div class="mb-3">
         <div class="form-check">
             <input class="form-check-input" type="radio" name="mode" id="mode-add" value="add" checked>
-            <label class="form-check-label" for="mode-add">Add to my events (skipping any that are already there)</label>
+            <label class="form-check-label" for="mode-add">Add to my groups and events (skipping any that are already there)</label>
         </div>
         <div class="form-check">
             <input class="form-check-input" type="radio" name="mode" id="mode-replace" value="replace">
-            <label class="form-check-label" for="mode-replace">Replace all my events</label>
-        </div>
-        <div class="form-check mt-2">
-            <input class="form-check-input" type="checkbox" id="import-places" name="add_places" value="1" checked>
-            <label class="form-check-label" for="import-places">Also add its places to the list of places</label>
+            <label class="form-check-label" for="mode-replace">Replace all my groups and events</label>
         </div>
     </div>
 

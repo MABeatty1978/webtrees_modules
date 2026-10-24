@@ -8,14 +8,14 @@ use Fisharebest\Webtrees\Date;
 
 use function array_keys;
 use function array_map;
+use function array_merge;
 use function array_slice;
-use function array_unique;
-use function array_values;
 use function count;
 use function implode;
 use function is_array;
 use function is_string;
 use function json_decode;
+use function mb_strtolower;
 use function mb_substr;
 use function preg_replace;
 use function strtoupper;
@@ -29,8 +29,9 @@ use function usort;
  *   date    a GEDCOM date, such as "1833", "ABT 1842", "19 SEP 1864" or "FROM 1861 TO 1865"
  *   title   a short name, shown as the type of fact
  *   text    a sentence describing it (optional)
- *   place   where it happened (optional)
+ *   place   where it happened, shown with the event (optional)
  *   note    a private reminder for the website owner, never shown to visitors (optional)
+ *   group   the key of the GroupList group that decides who sees this event
  *   enabled false to keep an event in the list, but not show it
  */
 class EventList
@@ -42,6 +43,7 @@ class EventList
     private const MAX_TEXT  = 500;
     private const MAX_PLACE = 200;
     private const MAX_NOTE  = 300;
+    private const MAX_GROUP = 40;
 
     /**
      * Check events from a form or a file, and put them in date order.
@@ -66,6 +68,7 @@ class EventList
                 'text'    => self::line($row['text'] ?? '', self::MAX_TEXT),
                 'place'   => self::line($row['place'] ?? '', self::MAX_PLACE),
                 'note'    => self::line($row['note'] ?? '', self::MAX_NOTE),
+                'group'   => self::line($row['group'] ?? '', self::MAX_GROUP),
                 'enabled' => !empty($row['enabled']),
             ];
 
@@ -92,10 +95,20 @@ class EventList
 
     /**
      * Read a file of events, as made by "Export" or supplied as an example.  It is JSON, in one of these forms:
-     *   {"name": "...", "description": "...", "places": ["...", "..."], "events": [{...}, {...}]}
-     *   [{...}, {...}]
      *
-     * @return array{name:string,description:string,places:array<string>,events:array<array<string,mixed>>,errors:array<string>}|null null if it is not valid JSON of this kind
+     *   {"name": "...", "description": "...",
+     *    "groups": [{"label": "...", "places": [...], "scope": "connected"}, ...],
+     *    "events": [{"date": "...", "title": "...", "group": "<a group's key or label>"}, ...]}
+     *
+     *   {"name": "...", "places": ["...", "..."], "events": [{...}, {...}]}
+     *       a simpler, single-group form: one group is made from "places", named after "name".
+     *
+     *   [{...}, {...}]
+     *       a bare list of events, and nothing else.  If none of them name a group, they all go
+     *       into one group with no places, shown to everyone.
+     *
+     * @return array{name:string,description:string,groups:array<array<string,mixed>>,events:array<array<string,mixed>>,errors:array<string>}|null
+     *               null if it is not valid JSON of this kind
      */
     public static function fromJson(string $json): ?array
     {
@@ -114,35 +127,78 @@ class EventList
             return null;
         }
 
+        $raw_groups = is_array($data['groups'] ?? null) ? $data['groups'] : null;
+
+        // The simpler form: one group, made from a flat list of places.
+        if ($raw_groups === null) {
+            $places = [];
+            foreach (is_array($data['places'] ?? null) ? $data['places'] : [] as $place) {
+                if (is_string($place) && trim($place) !== '') {
+                    $places[] = $place;
+                }
+            }
+
+            $raw_groups = $places === [] ? [] : [[
+                'label'  => $data['name'] ?? 'Local',
+                'places' => implode("\n", $places),
+                'scope'  => GroupList::SCOPE_CONNECTED,
+            ]];
+        }
+
+        [$groups, $group_errors] = GroupList::clean($raw_groups);
+
+        // Events may name a group by its key or, more conveniently for someone hand-writing a
+        // pack, by its label.  An event naming no group goes into the pack's first group, if it
+        // has one — or is shown to everyone, if the pack defines no groups at all.
+        $label_to_key = [];
+        foreach ($groups as $group) {
+            $label_to_key[self::fold($group['label'])] = $group['key'];
+        }
+
+        $default_key = $groups[0]['key'] ?? '';
+
+        if ($groups === []) {
+            $groups[]     = ['key' => 'everyone', 'label' => 'Everyone', 'places' => '', 'scope' => GroupList::SCOPE_EVERYONE];
+            $default_key  = 'everyone';
+        }
+
         $rows = [];
         foreach ($data['events'] as $row) {
-            if (is_array($row)) {
-                // Events are on unless the file says otherwise.
-                $row['enabled'] = $row['enabled'] ?? true;
-                $rows[]         = $row;
+            if (!is_array($row)) {
+                continue;
             }
+
+            // Events are on unless the file says otherwise.
+            $row['enabled'] = $row['enabled'] ?? true;
+
+            $named = is_string($row['group'] ?? null) ? trim($row['group']) : '';
+            $row['group'] = $named === '' ? $default_key : ($label_to_key[self::fold($named)] ?? $named);
+
+            $rows[] = $row;
         }
 
-        [$events, $errors] = self::clean($rows);
-
-        $places = [];
-        foreach (is_array($data['places'] ?? null) ? $data['places'] : [] as $place) {
-            if (is_string($place) && trim($place) !== '') {
-                $places[] = self::line($place, self::MAX_PLACE);
-            }
-        }
+        [$events, $event_errors] = self::clean($rows);
 
         return [
             'name'        => self::line($data['name'] ?? '', 100),
             'description' => self::line($data['description'] ?? '', 300),
-            'places'      => $places,
+            'groups'      => $groups,
             'events'      => $events,
-            'errors'      => $errors,
+            'errors'      => array_merge($group_errors, $event_errors),
         ];
     }
 
     /**
-     * Put new events after the existing ones, skipping any already in the list (same date and title).
+     * A key to compare names loosely by: case and spacing do not matter.
+     */
+    private static function fold(string $text): string
+    {
+        return mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $text)));
+    }
+
+    /**
+     * Put new events after the existing ones, skipping any already in the list (same date,
+     * title and group).
      *
      * @param array<array<string,mixed>> $existing
      * @param array<array<string,mixed>> $new
@@ -153,12 +209,12 @@ class EventList
     {
         $known = [];
         foreach ($existing as $event) {
-            $known[$event['date'] . '|' . $event['title']] = true;
+            $known[self::mergeKey($event)] = true;
         }
 
         $added = 0;
         foreach ($new as $event) {
-            $key = $event['date'] . '|' . $event['title'];
+            $key = self::mergeKey($event);
 
             if (!isset($known[$key]) && count($existing) < self::MAX_EVENTS) {
                 $known[$key] = true;
@@ -168,6 +224,14 @@ class EventList
         }
 
         return [self::sort($existing), $added];
+    }
+
+    /**
+     * @param array<string,mixed> $event
+     */
+    private static function mergeKey(array $event): string
+    {
+        return $event['date'] . '|' . $event['title'] . '|' . $event['group'];
     }
 
     /**
@@ -201,29 +265,6 @@ class EventList
     public static function isValidDate(string $date): bool
     {
         return $date !== '' && (new Date($date))->isOK();
-    }
-
-    /**
-     * Tidy a list of places: one per line, no repeats.
-     *
-     * @return array{0:string,1:array<string>} the tidy list, and the lines that were dropped
-     */
-    public static function cleanPlaces(string $lines): array
-    {
-        $keep    = [];
-        $dropped = [];
-
-        foreach (PlaceMatcher::lines($lines) as $line) {
-            $line = self::line($line, self::MAX_PLACE);
-
-            if (PlaceMatcher::isPattern($line) && !PlaceMatcher::isValidPattern($line)) {
-                $dropped[] = $line;
-            } else {
-                $keep[] = $line;
-            }
-        }
-
-        return [implode("\n", array_slice(array_values(array_unique($keep)), 0, 50)), $dropped];
     }
 
     /**

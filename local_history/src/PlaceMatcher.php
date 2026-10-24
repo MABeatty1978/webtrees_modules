@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace MichaelBeatty\WebtreesModules\LocalHistory;
 
+use function array_slice;
+use function array_unique;
+use function array_values;
+use function implode;
 use function mb_strtolower;
+use function mb_substr;
 use function preg_match;
 use function preg_replace;
 use function preg_split;
@@ -98,6 +103,37 @@ class PlaceMatcher
     public static function isValidPattern(string $pattern): bool
     {
         return @preg_match($pattern, '') !== false;
+    }
+
+    /**
+     * Tidy a list of places as typed into a settings box: one per line, no repeats, each line
+     * no longer than $max_length.
+     *
+     * @return array{0:string,1:array<string>} the tidy list, and any regular-expression lines
+     *                                          that were dropped for not being valid
+     */
+    public static function cleanList(string $lines, int $max_length = 200, int $max_lines = 50): array
+    {
+        $keep    = [];
+        $dropped = [];
+
+        foreach (self::lines($lines) as $line) {
+            $line = trim((string) preg_replace('/\s+/u', ' ', $line));
+            $line = self::truncate($line, $max_length);
+
+            if (self::isPattern($line) && !self::isValidPattern($line)) {
+                $dropped[] = $line;
+            } else {
+                $keep[] = $line;
+            }
+        }
+
+        return [implode("\n", array_slice(array_values(array_unique($keep)), 0, $max_lines)), $dropped];
+    }
+
+    private static function truncate(string $text, int $max_length): string
+    {
+        return mb_substr($text, 0, $max_length);
     }
 
     private static function normalize(string $text): string

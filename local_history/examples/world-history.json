@@ -1,0 +1,89 @@
+{
+    "name": "World history",
+    "description": "Major events felt across much of the world, not tied to any one town or country — a broad starting point, shown to everyone regardless of where they lived. Check the facts before you rely on them, and add a second group of your own, scoped to your own places, alongside this one.",
+    "groups": [
+        {
+            "label": "World events",
+            "places": "",
+            "scope": "everyone"
+        }
+    ],
+    "events": [
+        {
+            "date": "FROM 1789 TO 1799",
+            "title": "French Revolution",
+            "text": "A revolution in France overturns the monarchy and sets off decades of political upheaval and war across Europe.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 1850 TO 1930",
+            "title": "Age of mass emigration",
+            "text": "Tens of millions of people leave Europe and Asia for the Americas, Australia and elsewhere, seeking land or work, or escaping famine, poverty or persecution — the reason many family trees cross an ocean somewhere in this period.",
+            "note": "Check: the span, causes and direction of migration differ a great deal by country of origin. Narrow this to your own family's timing if you can, or add a more specific event instead.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 28 JUL 1914 TO 11 NOV 1918",
+            "title": "The First World War",
+            "text": "A war across Europe, the Middle East, Africa and the Pacific draws in more than thirty countries and kills an estimated 15 to 20 million people.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 1918 TO 1920",
+            "title": "Spanish flu pandemic",
+            "text": "An influenza pandemic spreads worldwide in the final year of the First World War and after, killing more people than the war itself.",
+            "note": "Check: death toll estimates vary widely between sources, from about 20 to 50 million or more.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 24 OCT 1929 TO 29 OCT 1929",
+            "title": "Wall Street Crash",
+            "text": "Share prices collapse on the New York Stock Exchange over the course of a week, triggering a decade of economic depression felt across much of the industrialized world.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 1929 TO 1939",
+            "title": "The Great Depression",
+            "text": "A prolonged worldwide economic downturn leaves tens of millions unemployed and reshapes government and society in many countries.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 1 SEP 1939 TO 2 SEP 1945",
+            "title": "The Second World War",
+            "text": "The deadliest conflict in history involves more than thirty countries and causes an estimated 70 to 85 million deaths, military and civilian.",
+            "group": "World events"
+        },
+        {
+            "date": "24 OCT 1945",
+            "title": "United Nations founded",
+            "text": "The United Nations is established after the Second World War, with the stated aim of preventing future wars and encouraging cooperation between countries.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 1945 TO 1991",
+            "title": "The Cold War",
+            "text": "A prolonged standoff between the United States and the Soviet Union, and their respective allies, shapes politics, military service and migration in much of the world.",
+            "note": "Check: historians give different start and end dates for this period; 1945 to 1991 is a common and convenient range.",
+            "group": "World events"
+        },
+        {
+            "date": "4 OCT 1957",
+            "title": "Sputnik launched",
+            "text": "The Soviet Union launches Sputnik 1, the first artificial satellite, beginning the Space Race between the United States and the Soviet Union.",
+            "group": "World events"
+        },
+        {
+            "date": "20 JUL 1969",
+            "title": "First Moon landing",
+            "text": "Apollo 11 astronauts become the first people to walk on the Moon, an event broadcast live and followed by a large share of the world's population.",
+            "group": "World events"
+        },
+        {
+            "date": "FROM 2020 TO 2023",
+            "title": "COVID-19 pandemic",
+            "text": "A new coronavirus spreads worldwide, leading to lockdowns, border closures and millions of deaths, and disrupting daily life for almost everyone for a time.",
+            "note": "Check: death toll estimates and the exact end of the pandemic differ between sources; treat the end date as approximate.",
+            "group": "World events"
+        }
+    ]
+}
